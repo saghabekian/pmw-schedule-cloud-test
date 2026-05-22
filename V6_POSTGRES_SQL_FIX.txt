@@ -1,0 +1,6 @@
+PMW Cloud Test v6 - PostgreSQL SQL Fix
+
+Fixes PostgreSQL error:
+SELECT DISTINCT, ORDER BY expressions must appear in select list
+
+Upload/replace all files in GitHub, commit, then Render Manual Deploy > Deploy latest commit.

@@ -22,7 +22,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "Cloud Test v5 Postgres Driver Fix"
+APP_VERSION = "Cloud Test v6 Postgres SQL Fix"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("PMW_SQLITE_PATH", os.path.join(APP_DIR, "pmw_schedule.db"))
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -260,8 +260,19 @@ def import_workbook(path):
     con.commit(); con.close(); log("IMPORT_WORKBOOK", os.path.basename(path)); return count
 
 def sheet_names():
-    con=db(); rows=con.execute("SELECT DISTINCT sheet_name FROM workbook_cells ORDER BY CASE WHEN sheet_name='Fabrication Schedule' THEN 0 ELSE 1 END, sheet_name").fetchall(); con.close()
-    return [r[0] for r in rows]
+    con=db()
+    if USE_POSTGRES:
+        rows=con.execute("""
+            SELECT sheet_name
+            FROM workbook_cells
+            GROUP BY sheet_name
+            ORDER BY MIN(CASE WHEN sheet_name='Fabrication Schedule' THEN 0 ELSE 1 END), sheet_name
+        """).fetchall()
+    else:
+        rows=con.execute("SELECT DISTINCT sheet_name FROM workbook_cells ORDER BY CASE WHEN sheet_name='Fabrication Schedule' THEN 0 ELSE 1 END, sheet_name").fetchall()
+    con.close()
+    names=[r['sheet_name'] for r in rows]
+    return names or ['Fabrication Schedule']
 
 def cells_for(sheet):
     con=db(); rows=con.execute("SELECT row_num,col_num,value FROM workbook_cells WHERE sheet_name=?",(sheet,)).fetchall(); con.close()
@@ -1882,7 +1893,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP Cloud Test v5')
+    print('PMW Ticket + Fabrication APP Cloud Test v6')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
