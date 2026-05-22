@@ -22,7 +22,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "Cloud Test v6 Postgres SQL Fix"
+APP_VERSION = "Cloud Test v7 Postgres Save Fix"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("PMW_SQLITE_PATH", os.path.join(APP_DIR, "pmw_schedule.db"))
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -492,9 +492,39 @@ def open_path_on_this_pc(path):
     except Exception as e:
         return False, str(e)
 
+
+def upsert_workbook_cell(sheet, r, c, val='', bg='', txt='', link='', label='', fsize='', bold='', rich='', user=''):
+    now = datetime.now().isoformat(timespec='seconds')
+    con = db()
+    cur = con.cursor()
+    if USE_POSTGRES:
+        cur.execute("""
+            INSERT INTO workbook_cells(
+                sheet_name,row_num,col_num,value,bg_color,text_color,link_path,link_label,font_size,bold,rich_html,updated_by,updated_at
+            )
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(sheet_name,row_num,col_num) DO UPDATE SET
+                value=EXCLUDED.value,
+                bg_color=EXCLUDED.bg_color,
+                text_color=EXCLUDED.text_color,
+                link_path=EXCLUDED.link_path,
+                link_label=EXCLUDED.link_label,
+                font_size=EXCLUDED.font_size,
+                bold=EXCLUDED.bold,
+                rich_html=EXCLUDED.rich_html,
+                updated_by=EXCLUDED.updated_by,
+                updated_at=EXCLUDED.updated_at
+        """, (sheet,r,c,val,bg,txt,link,label,fsize,bold,rich,user,now))
+    else:
+        cur.execute("""INSERT OR REPLACE INTO workbook_cells(
+            sheet_name,row_num,col_num,value,bg_color,text_color,link_path,link_label,font_size,bold,rich_html,updated_by,updated_at)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",(sheet,r,c,val,bg,txt,link,label,fsize,bold,rich,user,now))
+    con.commit()
+    con.close()
+    return now
+
+
 def save_posted_cells(sheet):
-    now=datetime.now().isoformat(timespec='seconds')
-    con=db(); cur=con.cursor()
     for r in range(3,51):
         for c in DISPLAY_COLS:
             key=f"cell_{r}_{c}"
@@ -507,10 +537,7 @@ def save_posted_cells(sheet):
                 fsize=(request.form.get(f"fsize_{r}_{c}") or '').strip()
                 bold=(request.form.get(f"bold_{r}_{c}") or '').strip()
                 rich=(request.form.get(f"rich_{r}_{c}") or '').strip()
-                cur.execute("""INSERT OR REPLACE INTO workbook_cells(
-                    sheet_name,row_num,col_num,value,bg_color,text_color,link_path,link_label,font_size,bold,rich_html,updated_by,updated_at)
-                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",(sheet,r,c,val,bg,txt,link,label,fsize,bold,rich,session.get('username',''),now))
-    con.commit(); con.close()
+                upsert_workbook_cell(sheet,r,c,val,bg,txt,link,label,fsize,bold,rich,session.get('username',''))
 
 
 def sort_side(sheet, key_col, job_col, note_col):
@@ -840,6 +867,17 @@ def db_mode_banner():
     if os.environ.get("RENDER") and not USE_POSTGRES:
         extra = " — WARNING: data can reset after redeploy. DATABASE_URL is not connected."
     return f"<div style='background:{color};border:2px solid {border};padding:8px;margin:8px;font-weight:bold'>Database Mode: {mode}{extra}</div>"
+
+
+@app.route('/test_db_write')
+@login_required
+@role_required('admin')
+def test_db_write():
+    try:
+        now = upsert_workbook_cell('Fabrication Schedule',49,2,'TEST DB WRITE '+datetime.now().strftime('%H:%M:%S'),'#fff066','','','','','','',session.get('username',''))
+        return page(f"<h2>Test DB Write</h2><p>Saved test cell to row 49 / numbering side.</p><p>DB: {'PostgreSQL' if USE_POSTGRES else 'SQLite'}</p><p>Saved at: {now}</p><p><a href='/'>Back to workbook</a></p>")
+    except Exception as e:
+        return page(f"<h2>Test DB Write Failed</h2><pre>{html.escape(str(e))}</pre>")
 
 @app.route('/db_check')
 @login_required
@@ -1820,24 +1858,20 @@ def autosave_cell():
     if r < 1 or r > 200 or c not in DISPLAY_COLS:
         return jsonify({"ok": False, "error": "Out of range"}), 400
 
-    val = (data.get('value') or '').replace('\r',' ').replace('\n',' ').strip()
-    bg = (data.get('bg_color') or '').strip()
-    txt = (data.get('text_color') or '').strip()
-    link = (data.get('link_path') or '').strip()
-    label = (data.get('link_label') or '').strip()
-    fsize = (data.get('font_size') or '').strip()
-    bold = (data.get('bold') or '').strip()
-    rich = (data.get('rich_html') or '').strip()
-    now = datetime.now().isoformat(timespec='seconds')
-
-    con = db()
-    con.execute("""INSERT OR REPLACE INTO workbook_cells(
-        sheet_name,row_num,col_num,value,bg_color,text_color,link_path,link_label,font_size,bold,rich_html,updated_by,updated_at)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (sheet,r,c,val,bg,txt,link,label,fsize,bold,rich,session.get('username',''),now))
-    con.commit()
-    con.close()
-    return jsonify({"ok": True, "saved_at": now})
+    try:
+        val = (data.get('value') or '').replace('\r',' ').replace('\n',' ').strip()
+        bg = (data.get('bg_color') or '').strip()
+        txt = (data.get('text_color') or '').strip()
+        link = (data.get('link_path') or '').strip()
+        label = (data.get('link_label') or '').strip()
+        fsize = (data.get('font_size') or '').strip()
+        bold = (data.get('bold') or '').strip()
+        rich = (data.get('rich_html') or '').strip()
+        now = upsert_workbook_cell(sheet,r,c,val,bg,txt,link,label,fsize,bold,rich,session.get('username',''))
+        return jsonify({"ok": True, "saved_at": now, "db": "postgres" if USE_POSTGRES else "sqlite"})
+    except Exception as e:
+        print("AUTOSAVE FAILED:", repr(e))
+        return jsonify({"ok": False, "error": str(e), "db": "postgres" if USE_POSTGRES else "sqlite"}), 500
 
 
 @app.route('/users')
@@ -1893,7 +1927,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP Cloud Test v6')
+    print('PMW Ticket + Fabrication APP Cloud Test v7')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)

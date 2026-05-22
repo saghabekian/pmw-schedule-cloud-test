@@ -1,0 +1,12 @@
+PMW Cloud Test v7 - Postgres Save Fix
+
+This fixes saving cells into PostgreSQL.
+
+After deploying:
+1. Confirm banner says PostgreSQL.
+2. Login as admin.
+3. Open /test_db_write
+4. Go back to workbook and confirm row 49 has TEST DB WRITE.
+5. Redeploy latest commit.
+6. Confirm row 49 still has TEST DB WRITE.
+7. Then test normal cell edits/autosave.
