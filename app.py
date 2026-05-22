@@ -7,7 +7,7 @@ from werkzeug.utils import secure_filename
 from openpyxl import load_workbook
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "Cloud Test v1"
+APP_VERSION = "Cloud Test v2 Startup Fix"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("PMW_SQLITE_PATH", os.path.join(APP_DIR, "pmw_schedule.db"))
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -1663,6 +1663,30 @@ def audit():
     for r in rows: body += f"<tr><td>{r['created_at']}</td><td>{html.escape(r['username'] or '')}</td><td>{r['action']}</td><td>{html.escape(r['details'] or '')}</td></tr>"
     return page(body+'</table>')
 
+
+def startup_init_for_cloud():
+    """Run database setup when imported by gunicorn/Render, not only when run locally."""
+    try:
+        init_db()
+        con = db()
+        try:
+            n = con.execute('SELECT COUNT(*) FROM workbook_cells').fetchone()[0]
+        except Exception:
+            n = 0
+        con.close()
+        starter = os.path.join(APP_DIR, 'Ticket +Fabrication-ACTIVE(1).xlsm')
+        if n == 0 and os.path.exists(starter):
+            with app.test_request_context('/'):
+                session['username'] = 'system'
+                try:
+                    import_workbook(starter)
+                except Exception as e:
+                    print('Starter import skipped:', e)
+    except Exception as e:
+        print('Startup database initialization failed:', e)
+
+startup_init_for_cloud()
+
 if __name__ == '__main__':
     init_db()
     con=db(); n=con.execute('SELECT COUNT(*) FROM workbook_cells').fetchone()[0]; con.close()
@@ -1673,7 +1697,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP Cloud Test v1')
+    print('PMW Ticket + Fabrication APP Cloud Test v2')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)

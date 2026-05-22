@@ -1,4 +1,4 @@
-# PMW Cloud Test v1 - Render Free Test
+# PMW Cloud Test v2 Startup Fix - Render Free Test
 
 This package is built from the working PMW v25 Auto Save / Mobile version.
 
@@ -55,3 +55,16 @@ viewer / view123
 ## Production next step
 
 After the cloud test works, upgrade the database to PostgreSQL and add automatic backups.
+
+
+## v2 Fix
+
+This version fixes Render/Gunicorn startup by running the database setup when the app is imported, not only when started locally. This fixes errors like:
+
+sqlite3.OperationalError: no such column: bg_color
+
+To update Render:
+1. Upload/replace all files from this v2 folder in GitHub.
+2. Commit changes.
+3. Render should redeploy automatically.
+4. If not, click Manual Deploy > Deploy latest commit.

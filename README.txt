@@ -94,3 +94,5 @@ V25 AUTO SAVE:
 - Phone and PC cell edits auto-save to the shared database.
 - Other devices should refresh the page to see changes.
 - Keep the PC running START_APP.bat as the server.
+
+Cloud Test v2 Startup Fix: initializes database columns when Render imports the app with gunicorn.
