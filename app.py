@@ -22,7 +22,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "Cloud Test v8 Save Now Fix"
+APP_VERSION = "Cloud Test v9 Save Button Fixed"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("PMW_SQLITE_PATH", os.path.join(APP_DIR, "pmw_schedule.db"))
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -870,6 +870,21 @@ def db_mode_banner():
 
 
 
+
+@app.route('/read_test_cell')
+@login_required
+@role_required('admin')
+def read_test_cell():
+    try:
+        con=db()
+        rec=con.execute("SELECT value,bg_color,updated_at FROM workbook_cells WHERE sheet_name=? AND row_num=? AND col_num=?",('Fabrication Schedule',6,2)).fetchone()
+        con.close()
+        if not rec:
+            return page("<h2>Read Test Cell</h2><p>No database record found for row 6 / numbering job cell.</p><p><a href='/'>Back</a></p>")
+        return page(f"<h2>Read Test Cell</h2><p><b>Row 6 value in database:</b> {html.escape(str(rec['value']))}</p><p><b>Color:</b> {html.escape(str(rec['bg_color']))}</p><p><b>Updated:</b> {html.escape(str(rec['updated_at']))}</p><p><a href='/'>Back</a></p>")
+    except Exception as e:
+        return page(f"<h2>Read Test Cell Failed</h2><pre>{html.escape(str(e))}</pre>")
+
 @app.route('/read_cell/<int:row>/<int:col>')
 @login_required
 @role_required('admin')
@@ -1188,7 +1203,7 @@ def index():
 <button type='button' onclick="openRichTextEditor()">Edit selected words</button>
 <span class='small'>Drag across cells or Ctrl+click to format many cells.</span>
 </div>"""
-    body=f"<div class='toolbar'><b>Excel-style workbook</b><span class='small'>{note}</span>{color_html}<span class='grow'></span>{import_html}</div><div class='tabs'>{tabs}</div><div id='saveStatus' style='position:fixed;right:8px;top:48px;z-index:2000;background:#fff3cd;border:1px solid #d6b656;padding:3px 8px;font-size:12px;display:none'>Saved</div>"
+    body=f"<div class='toolbar'><b>Excel-style workbook</b><span class='small'>{note}</span>{color_html}<span class='grow'></span>{import_html}</div><div class='tabs'>{tabs}</div><div style='position:fixed;right:12px;top:82px;z-index:3000'><button form='sheetForm' type='submit' name='cmd' value='save_only' style='background:#d9ead3;border:2px solid #107c41;font-weight:bold;padding:10px 18px'>SAVE NOW</button></div><div id='saveStatus' style='position:fixed;right:8px;top:48px;z-index:2000;background:#fff3cd;border:1px solid #d6b656;padding:3px 8px;font-size:12px;display:none'>Saved</div>"
     if editable:
         body += "<div class='mobileTop'><button type='button' class='red' onclick=\"setCellColor('#ff6666')\">Red</button><button type='button' class='yellow' onclick=\"setCellColor('#fff066')\">Yellow</button><button type='button' class='green' onclick=\"setCellColor('#93d050')\">Green</button><button type='button' class='blue' onclick=\"setCellColor('#9dc3e6')\">Blue</button><button type='button' class='white' onclick=\"setCellColor('#ffffff')\">White</button><button type='button' onclick=\"setCellColor('')\">Clear</button><button type='button' onclick=\"toggleBold()\"><b>B</b></button><button type='button' onclick=\"openRichTextEditor()\">Words</button><button type='button' onclick=\"mobileZoomOut()\">Zoom -</button><button type='button' onclick=\"mobileZoomIn()\">Zoom +</button><span class='mobileZoomLabel' id='mobileZoomLabel'>100%</span></div>"
     body += "<div class='workspace'>"
@@ -1628,6 +1643,22 @@ document.addEventListener('DOMContentLoaded', function(){
     });
   }
 });
+
+/* ===== V9 FORM SAVE SYNC ===== */
+document.addEventListener('DOMContentLoaded', function(){
+  const form=document.getElementById('sheetForm');
+  if(form){
+    form.addEventListener('submit', function(){
+      document.querySelectorAll('.richCell').forEach(function(el){
+        const r=el.dataset.row, c=el.dataset.col;
+        const plain=document.querySelector(`input[name="cell_${r}_${c}"]`);
+        const rich=document.querySelector(`input[name="rich_${r}_${c}"]`);
+        if(plain) plain.value=(el.textContent||'').replace(/\s+/g,' ').trim();
+        if(rich) rich.value=el.innerHTML;
+      });
+    }, true);
+  }
+});
 </script>
 </form>"""
     body += "</div>"
@@ -1641,7 +1672,7 @@ def save_command():
     cmd=request.form.get('cmd','save')
     save_posted_cells(sheet)
     if cmd=='save_only':
-        log('SAVE_NOW', sheet); flash('Saved to database.')
+        log('SAVE_NOW', sheet); flash('Saved to PostgreSQL database.' if USE_POSTGRES else 'Saved to database.')
     elif cmd=='sort_numbering':
         sort_side(sheet,1,2,3); log('SORT_NUMBERING',sheet); flash('Numbering sorted.')
     elif cmd=='sort_fabrication':
@@ -1968,7 +1999,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP Cloud Test v8')
+    print('PMW Ticket + Fabrication APP Cloud Test v9')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)

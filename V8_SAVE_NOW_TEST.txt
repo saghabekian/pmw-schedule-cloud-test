@@ -1,0 +1,19 @@
+PMW Cloud Test v8 - Save Now Fix
+
+This version adds:
+- Save Now button
+- stronger form sync before submit
+- read_cell test route
+
+After deploying:
+1. Open the workbook.
+2. Type TEST SAVE into a visible cell, for example row 43 numbering job cell.
+3. Click Save Now.
+4. Refresh page.
+5. Confirm it stays.
+6. Go to /read_cell/43/2 to confirm database value.
+7. Redeploy latest commit.
+8. Confirm it still stays.
+
+Important:
+Autosave is still active, but Save Now gives you a clear manual confirmation while we stabilize cloud edits.
