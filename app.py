@@ -5,9 +5,15 @@ from flask import Flask, request, redirect, url_for, session, render_template_st
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from openpyxl import load_workbook
+try:
+    import psycopg2
+    import psycopg2.extras
+except Exception:
+    psycopg2 = None
+
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "Cloud Test v2 Startup Fix"
+APP_VERSION = "Cloud Test v3 Postgres Ready"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("PMW_SQLITE_PATH", os.path.join(APP_DIR, "pmw_schedule.db"))
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -21,48 +27,149 @@ ROLE_LEVEL = {"viewer":1,"editor":2,"admin":3}
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "pmw-local-dev-secret")
 
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+USE_POSTGRES = bool(DATABASE_URL and psycopg2)
+
+class PgCompatCursor:
+    def __init__(self, cur):
+        self.cur = cur
+    def _q(self, query):
+        q = query.strip()
+        if q.upper().startswith("INSERT OR REPLACE INTO WORKBOOK_CELLS"):
+            q = q.replace("INSERT OR REPLACE INTO workbook_cells", "INSERT INTO workbook_cells")
+            q = q.replace("INSERT OR REPLACE INTO workbook_cells", "INSERT INTO workbook_cells")
+            if "ON CONFLICT" not in q:
+                q += " ON CONFLICT(sheet_name,row_num,col_num) DO UPDATE SET value=EXCLUDED.value, bg_color=COALESCE(EXCLUDED.bg_color, workbook_cells.bg_color), text_color=COALESCE(EXCLUDED.text_color, workbook_cells.text_color), link_path=COALESCE(EXCLUDED.link_path, workbook_cells.link_path), link_label=COALESCE(EXCLUDED.link_label, workbook_cells.link_label), font_size=COALESCE(EXCLUDED.font_size, workbook_cells.font_size), bold=COALESCE(EXCLUDED.bold, workbook_cells.bold), rich_html=COALESCE(EXCLUDED.rich_html, workbook_cells.rich_html), updated_by=EXCLUDED.updated_by, updated_at=EXCLUDED.updated_at"
+        elif q.upper().startswith("INSERT OR REPLACE INTO"):
+            q = q.replace("INSERT OR REPLACE INTO", "INSERT INTO")
+        return q.replace("?", "%s")
+    def execute(self, query, params=()):
+        self.cur.execute(self._q(query), params or ())
+        return self
+    def fetchone(self):
+        return self.cur.fetchone()
+    def fetchall(self):
+        return self.cur.fetchall()
+    @property
+    def lastrowid(self):
+        try:
+            self.cur.execute("SELECT LASTVAL() AS id")
+            row = self.cur.fetchone()
+            return row["id"] if row else None
+        except Exception:
+            return None
+
+class PgCompatConnection:
+    def __init__(self, con):
+        self.con = con
+    def cursor(self):
+        return PgCompatCursor(self.con.cursor(cursor_factory=psycopg2.extras.RealDictCursor))
+    def execute(self, query, params=()):
+        cur = self.cursor()
+        return cur.execute(query, params)
+    def commit(self):
+        self.con.commit()
+    def close(self):
+        self.con.close()
+
+
+
 def db():
+    if USE_POSTGRES:
+        con = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+        return PgCompatConnection(con)
     con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
     return con
 
 def init_db():
     con=db(); cur=con.cursor()
-    cur.execute("""CREATE TABLE IF NOT EXISTS users(
-        id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password_hash TEXT, role TEXT, active INTEGER DEFAULT 1, created_at TEXT)""")
-    cur.execute("""CREATE TABLE IF NOT EXISTS workbook_cells(
-        sheet_name TEXT, row_num INTEGER, col_num INTEGER, value TEXT DEFAULT '', updated_by TEXT DEFAULT '', updated_at TEXT DEFAULT '',
-        PRIMARY KEY(sheet_name,row_num,col_num))""")
-    for coldef in [
-        "bg_color TEXT DEFAULT ''",
-        "text_color TEXT DEFAULT ''",
-        "link_path TEXT DEFAULT ''",
-        "link_label TEXT DEFAULT ''",
-        "font_size TEXT DEFAULT ''",
-        "bold TEXT DEFAULT ''",
-        "rich_html TEXT DEFAULT ''"
-    ]:
-        try:
-            cur.execute("ALTER TABLE workbook_cells ADD COLUMN " + coldef)
-        except sqlite3.OperationalError:
-            pass
-    cur.execute("""CREATE TABLE IF NOT EXISTS ticket_links(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        job_number TEXT,
-        subject TEXT,
-        sender TEXT,
-        received TEXT,
-        file_path TEXT UNIQUE,
-        created_at TEXT
-    )""")
-    cur.execute("""CREATE TABLE IF NOT EXISTS audit_log(
-        id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, action TEXT, details TEXT, created_at TEXT)""")
+
+    if USE_POSTGRES:
+        cur.execute("""CREATE TABLE IF NOT EXISTS users(
+            id SERIAL PRIMARY KEY,
+            username TEXT UNIQUE,
+            password_hash TEXT,
+            role TEXT,
+            active INTEGER DEFAULT 1,
+            created_at TEXT
+        )""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS workbook_cells(
+            sheet_name TEXT,
+            row_num INTEGER,
+            col_num INTEGER,
+            value TEXT DEFAULT '',
+            updated_by TEXT DEFAULT '',
+            updated_at TEXT DEFAULT '',
+            PRIMARY KEY(sheet_name,row_num,col_num)
+        )""")
+        for coldef in [
+            "bg_color TEXT DEFAULT ''",
+            "text_color TEXT DEFAULT ''",
+            "link_path TEXT DEFAULT ''",
+            "link_label TEXT DEFAULT ''",
+            "font_size TEXT DEFAULT ''",
+            "bold TEXT DEFAULT ''",
+            "rich_html TEXT DEFAULT ''"
+        ]:
+            try:
+                cur.execute("ALTER TABLE workbook_cells ADD COLUMN " + coldef)
+            except Exception:
+                con.con.rollback()
+        cur.execute("""CREATE TABLE IF NOT EXISTS ticket_links(
+            id SERIAL PRIMARY KEY,
+            job_number TEXT,
+            subject TEXT,
+            sender TEXT,
+            received TEXT,
+            file_path TEXT UNIQUE,
+            created_at TEXT
+        )""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS audit_log(
+            id SERIAL PRIMARY KEY,
+            username TEXT,
+            action TEXT,
+            details TEXT,
+            created_at TEXT
+        )""")
+    else:
+        cur.execute("""CREATE TABLE IF NOT EXISTS users(
+            id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password_hash TEXT, role TEXT, active INTEGER DEFAULT 1, created_at TEXT)""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS workbook_cells(
+            sheet_name TEXT, row_num INTEGER, col_num INTEGER, value TEXT DEFAULT '', updated_by TEXT DEFAULT '', updated_at TEXT DEFAULT '',
+            PRIMARY KEY(sheet_name,row_num,col_num))""")
+        for coldef in [
+            "bg_color TEXT DEFAULT ''",
+            "text_color TEXT DEFAULT ''",
+            "link_path TEXT DEFAULT ''",
+            "link_label TEXT DEFAULT ''",
+            "font_size TEXT DEFAULT ''",
+            "bold TEXT DEFAULT ''",
+            "rich_html TEXT DEFAULT ''"
+        ]:
+            try:
+                cur.execute("ALTER TABLE workbook_cells ADD COLUMN " + coldef)
+            except sqlite3.OperationalError:
+                pass
+        cur.execute("""CREATE TABLE IF NOT EXISTS ticket_links(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_number TEXT,
+            subject TEXT,
+            sender TEXT,
+            received TEXT,
+            file_path TEXT UNIQUE,
+            created_at TEXT
+        )""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS audit_log(
+            id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, action TEXT, details TEXT, created_at TEXT)""")
+
     for u,p,r in [("admin","admin123","admin"),("shop","shop123","editor"),("viewer","view123","viewer")]:
         if not cur.execute("SELECT id FROM users WHERE username=?",(u,)).fetchone():
             cur.execute("INSERT INTO users(username,password_hash,role,created_at) VALUES(?,?,?,?)",(u,generate_password_hash(p),r,datetime.now().isoformat(timespec='seconds')))
     con.commit(); con.close()
 
 def log(action, details=""):
+
     con=db(); con.execute("INSERT INTO audit_log(username,action,details,created_at) VALUES(?,?,?,?)",(session.get('username','system'),action,details,datetime.now().isoformat(timespec='seconds'))); con.commit(); con.close()
 
 def can(role): return ROLE_LEVEL.get(session.get('role',''),0) >= ROLE_LEVEL[role]
@@ -1697,7 +1804,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP Cloud Test v2')
+    print('PMW Ticket + Fabrication APP Cloud Test v3')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)

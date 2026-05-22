@@ -1,0 +1,40 @@
+PMW Cloud Test v3 - Add Free Render PostgreSQL
+
+This version can use Render PostgreSQL if DATABASE_URL is set.
+
+STEP 1 - Create the database in Render
+1. In Render dashboard click New +
+2. Choose Postgres
+3. Name: pmw-schedule-db
+4. Choose Free if available
+5. Click Create Database
+
+STEP 2 - Copy Internal Database URL
+1. Open the new Postgres database in Render
+2. Find Internal Database URL
+3. Copy it
+
+STEP 3 - Add it to your Web Service
+1. Open your pmw-schedule-cloud-test Web Service
+2. Go to Environment
+3. Add Environment Variable:
+   Key: DATABASE_URL
+   Value: paste the Internal Database URL
+4. Save changes
+
+STEP 4 - Upload this v3 package to GitHub
+1. Upload/replace all files in your GitHub repo
+2. Commit changes
+3. Render should redeploy automatically
+4. If not: Manual Deploy > Deploy latest commit
+
+STEP 5 - Test
+1. Open the Render app URL
+2. Login: admin / admin123
+3. Make edits on phone
+4. Refresh PC
+5. Edits should stay even after redeploys/restarts
+
+NOTE:
+If Render no longer offers a free Postgres database, we can still test SQLite briefly,
+or use Neon free Postgres instead.
