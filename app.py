@@ -13,7 +13,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "Cloud Test v3 Postgres Ready"
+APP_VERSION = "Cloud Test v4 DB Check"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("PMW_SQLITE_PATH", os.path.join(APP_DIR, "pmw_schedule.db"))
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -772,6 +772,35 @@ def reveal_file(path):
         pass
 
 
+
+def db_mode_banner():
+    mode = "PostgreSQL" if USE_POSTGRES else "SQLite TEMP"
+    color = "#d4edda" if USE_POSTGRES else "#f8d7da"
+    border = "#28a745" if USE_POSTGRES else "#dc3545"
+    extra = ""
+    if os.environ.get("RENDER") and not USE_POSTGRES:
+        extra = " — WARNING: data can reset after redeploy. DATABASE_URL is not connected."
+    return f"<div style='background:{color};border:2px solid {border};padding:8px;margin:8px;font-weight:bold'>Database Mode: {mode}{extra}</div>"
+
+@app.route('/db_check')
+@login_required
+@role_required('admin')
+def db_check():
+    try:
+        con=db()
+        cur=con.cursor()
+        cur.execute("SELECT COUNT(*) AS n FROM workbook_cells")
+        row=cur.fetchone()
+        try:
+            count = row["n"]
+        except Exception:
+            count = row[0]
+        con.close()
+        return page(f"<h2>Database Check</h2><p><b>Mode:</b> {'PostgreSQL' if USE_POSTGRES else 'SQLite TEMP'}</p><p><b>DATABASE_URL set:</b> {'YES' if bool(DATABASE_URL) else 'NO'}</p><p><b>psycopg2 loaded:</b> {'YES' if bool(psycopg2) else 'NO'}</p><p><b>Cell rows:</b> {count}</p>")
+    except Exception as e:
+        return page(f"<h2>Database Check Failed</h2><pre>{html.escape(str(e))}</pre>")
+
+
 def cloud_storage_warning():
     if os.environ.get("RENDER") and not os.environ.get("DATABASE_URL"):
         return "<div class='flash'>Cloud test is running without PostgreSQL. This is OK for testing, but data may reset if the free server restarts. Add Render PostgreSQL for persistent company use.</div>"
@@ -997,7 +1026,7 @@ BASE = """
 {{body|safe}}</body></html>
 """
 
-def page(body): return render_template_string(BASE, body=cloud_storage_warning()+body, app_name=APP_NAME, version=APP_VERSION, can_admin=can('admin'))
+def page(body): return render_template_string(BASE, body=db_mode_banner()+cloud_storage_warning()+body, app_name=APP_NAME, version=APP_VERSION, can_admin=can('admin'))
 
 @app.route('/login', methods=['GET','POST'])
 def login():
@@ -1792,6 +1821,7 @@ def startup_init_for_cloud():
     except Exception as e:
         print('Startup database initialization failed:', e)
 
+print('PMW DB MODE:', 'PostgreSQL' if USE_POSTGRES else 'SQLite TEMP', 'DATABASE_URL set:', bool(DATABASE_URL), 'psycopg2:', bool(psycopg2))
 startup_init_for_cloud()
 
 if __name__ == '__main__':
@@ -1804,7 +1834,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP Cloud Test v3')
+    print('PMW Ticket + Fabrication APP Cloud Test v4')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
