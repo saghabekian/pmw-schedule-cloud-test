@@ -1,0 +1,11 @@
+PMW Cloud Test v5 - Postgres Driver Fix
+
+Upload/replace all files in GitHub, commit, then Render Manual Deploy > Deploy latest commit.
+
+This version supports both psycopg3 and psycopg2.
+The top banner should say:
+Database Mode: PostgreSQL (psycopg3)
+or
+Database Mode: PostgreSQL (psycopg2)
+
+If it still says SQLite TEMP, DATABASE_URL is not reaching the web service.

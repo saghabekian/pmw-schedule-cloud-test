@@ -5,6 +5,15 @@ from flask import Flask, request, redirect, url_for, session, render_template_st
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from openpyxl import load_workbook
+# PostgreSQL driver support.
+# psycopg3 works better on newer Python versions used by some hosts.
+try:
+    import psycopg
+    from psycopg.rows import dict_row
+except Exception:
+    psycopg = None
+    dict_row = None
+
 try:
     import psycopg2
     import psycopg2.extras
@@ -13,7 +22,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "Cloud Test v4 DB Check"
+APP_VERSION = "Cloud Test v5 Postgres Driver Fix"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("PMW_SQLITE_PATH", os.path.join(APP_DIR, "pmw_schedule.db"))
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -28,23 +37,27 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "pmw-local-dev-secret")
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
-USE_POSTGRES = bool(DATABASE_URL and psycopg2)
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = "postgresql://" + DATABASE_URL[len("postgres://"):]
 
-class PgCompatCursor:
+PG_DRIVER = "psycopg3" if (DATABASE_URL and psycopg) else ("psycopg2" if (DATABASE_URL and psycopg2) else "")
+USE_POSTGRES = bool(DATABASE_URL and PG_DRIVER)
+
+def pg_upsert_query(query):
+    q = query.strip()
+    if q.upper().startswith("INSERT OR REPLACE INTO WORKBOOK_CELLS"):
+        q = q.replace("INSERT OR REPLACE INTO workbook_cells", "INSERT INTO workbook_cells")
+        if "ON CONFLICT" not in q:
+            q += " ON CONFLICT(sheet_name,row_num,col_num) DO UPDATE SET value=EXCLUDED.value, bg_color=EXCLUDED.bg_color, text_color=EXCLUDED.text_color, link_path=EXCLUDED.link_path, link_label=EXCLUDED.link_label, font_size=EXCLUDED.font_size, bold=EXCLUDED.bold, rich_html=EXCLUDED.rich_html, updated_by=EXCLUDED.updated_by, updated_at=EXCLUDED.updated_at"
+    elif q.upper().startswith("INSERT OR REPLACE INTO"):
+        q = q.replace("INSERT OR REPLACE INTO", "INSERT INTO")
+    return q.replace("?", "%s")
+
+class Pg3CompatCursor:
     def __init__(self, cur):
         self.cur = cur
-    def _q(self, query):
-        q = query.strip()
-        if q.upper().startswith("INSERT OR REPLACE INTO WORKBOOK_CELLS"):
-            q = q.replace("INSERT OR REPLACE INTO workbook_cells", "INSERT INTO workbook_cells")
-            q = q.replace("INSERT OR REPLACE INTO workbook_cells", "INSERT INTO workbook_cells")
-            if "ON CONFLICT" not in q:
-                q += " ON CONFLICT(sheet_name,row_num,col_num) DO UPDATE SET value=EXCLUDED.value, bg_color=COALESCE(EXCLUDED.bg_color, workbook_cells.bg_color), text_color=COALESCE(EXCLUDED.text_color, workbook_cells.text_color), link_path=COALESCE(EXCLUDED.link_path, workbook_cells.link_path), link_label=COALESCE(EXCLUDED.link_label, workbook_cells.link_label), font_size=COALESCE(EXCLUDED.font_size, workbook_cells.font_size), bold=COALESCE(EXCLUDED.bold, workbook_cells.bold), rich_html=COALESCE(EXCLUDED.rich_html, workbook_cells.rich_html), updated_by=EXCLUDED.updated_by, updated_at=EXCLUDED.updated_at"
-        elif q.upper().startswith("INSERT OR REPLACE INTO"):
-            q = q.replace("INSERT OR REPLACE INTO", "INSERT INTO")
-        return q.replace("?", "%s")
     def execute(self, query, params=()):
-        self.cur.execute(self._q(query), params or ())
+        self.cur.execute(pg_upsert_query(query), params or ())
         return self
     def fetchone(self):
         return self.cur.fetchone()
@@ -59,11 +72,43 @@ class PgCompatCursor:
         except Exception:
             return None
 
-class PgCompatConnection:
+class Pg3CompatConnection:
     def __init__(self, con):
         self.con = con
     def cursor(self):
-        return PgCompatCursor(self.con.cursor(cursor_factory=psycopg2.extras.RealDictCursor))
+        return Pg3CompatCursor(self.con.cursor(row_factory=dict_row))
+    def execute(self, query, params=()):
+        cur = self.cursor()
+        return cur.execute(query, params)
+    def commit(self):
+        self.con.commit()
+    def close(self):
+        self.con.close()
+
+class Pg2CompatCursor:
+    def __init__(self, cur):
+        self.cur = cur
+    def execute(self, query, params=()):
+        self.cur.execute(pg_upsert_query(query), params or ())
+        return self
+    def fetchone(self):
+        return self.cur.fetchone()
+    def fetchall(self):
+        return self.cur.fetchall()
+    @property
+    def lastrowid(self):
+        try:
+            self.cur.execute("SELECT LASTVAL() AS id")
+            row = self.cur.fetchone()
+            return row["id"] if row else None
+        except Exception:
+            return None
+
+class Pg2CompatConnection:
+    def __init__(self, con):
+        self.con = con
+    def cursor(self):
+        return Pg2CompatCursor(self.con.cursor(cursor_factory=psycopg2.extras.RealDictCursor))
     def execute(self, query, params=()):
         cur = self.cursor()
         return cur.execute(query, params)
@@ -73,16 +118,19 @@ class PgCompatConnection:
         self.con.close()
 
 
-
 def db():
-    if USE_POSTGRES:
+    if USE_POSTGRES and PG_DRIVER == "psycopg3":
+        con = psycopg.connect(DATABASE_URL)
+        return Pg3CompatConnection(con)
+    if USE_POSTGRES and PG_DRIVER == "psycopg2":
         con = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
-        return PgCompatConnection(con)
+        return Pg2CompatConnection(con)
     con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
     return con
 
 def init_db():
+
     con=db(); cur=con.cursor()
 
     if USE_POSTGRES:
@@ -774,7 +822,7 @@ def reveal_file(path):
 
 
 def db_mode_banner():
-    mode = "PostgreSQL" if USE_POSTGRES else "SQLite TEMP"
+    mode = ("PostgreSQL (" + PG_DRIVER + ")") if USE_POSTGRES else "SQLite TEMP"
     color = "#d4edda" if USE_POSTGRES else "#f8d7da"
     border = "#28a745" if USE_POSTGRES else "#dc3545"
     extra = ""
@@ -796,7 +844,7 @@ def db_check():
         except Exception:
             count = row[0]
         con.close()
-        return page(f"<h2>Database Check</h2><p><b>Mode:</b> {'PostgreSQL' if USE_POSTGRES else 'SQLite TEMP'}</p><p><b>DATABASE_URL set:</b> {'YES' if bool(DATABASE_URL) else 'NO'}</p><p><b>psycopg2 loaded:</b> {'YES' if bool(psycopg2) else 'NO'}</p><p><b>Cell rows:</b> {count}</p>")
+        return page(f"<h2>Database Check</h2><p><b>Mode:</b> {'PostgreSQL' if USE_POSTGRES else 'SQLite TEMP'}</p><p><b>DATABASE_URL set:</b> {'YES' if bool(DATABASE_URL) else 'NO'}</p><p><b>Postgres driver:</b> {PG_DRIVER or 'NONE'}</p><p><b>psycopg3 loaded:</b> {'YES' if bool(psycopg) else 'NO'}</p><p><b>psycopg2 loaded:</b> {'YES' if bool(psycopg2) else 'NO'}</p><p><b>Cell rows:</b> {count}</p>")
     except Exception as e:
         return page(f"<h2>Database Check Failed</h2><pre>{html.escape(str(e))}</pre>")
 
@@ -1821,7 +1869,7 @@ def startup_init_for_cloud():
     except Exception as e:
         print('Startup database initialization failed:', e)
 
-print('PMW DB MODE:', 'PostgreSQL' if USE_POSTGRES else 'SQLite TEMP', 'DATABASE_URL set:', bool(DATABASE_URL), 'psycopg2:', bool(psycopg2))
+print('PMW DB MODE:', 'PostgreSQL' if USE_POSTGRES else 'SQLite TEMP', 'DATABASE_URL set:', bool(DATABASE_URL), 'PG_DRIVER:', PG_DRIVER, 'psycopg3:', bool(psycopg), 'psycopg2:', bool(psycopg2))
 startup_init_for_cloud()
 
 if __name__ == '__main__':
@@ -1834,7 +1882,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP Cloud Test v4')
+    print('PMW Ticket + Fabrication APP Cloud Test v5')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
