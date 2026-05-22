@@ -22,7 +22,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "Cloud Test v7 Postgres Save Fix"
+APP_VERSION = "Cloud Test v8 Save Now Fix"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("PMW_SQLITE_PATH", os.path.join(APP_DIR, "pmw_schedule.db"))
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -869,6 +869,22 @@ def db_mode_banner():
     return f"<div style='background:{color};border:2px solid {border};padding:8px;margin:8px;font-weight:bold'>Database Mode: {mode}{extra}</div>"
 
 
+
+@app.route('/read_cell/<int:row>/<int:col>')
+@login_required
+@role_required('admin')
+def read_cell(row, col):
+    try:
+        con=db()
+        rec=con.execute("SELECT * FROM workbook_cells WHERE sheet_name=? AND row_num=? AND col_num=?",('Fabrication Schedule',row,col)).fetchone()
+        con.close()
+        if not rec:
+            return page(f"<h2>Read Cell {row},{col}</h2><p>No record found.</p><p><a href='/'>Back</a></p>")
+        val = rec['value'] if 'value' in rec else rec.get('value','')
+        return page(f"<h2>Read Cell {row},{col}</h2><p><b>Value:</b> {html.escape(str(val))}</p><p><b>DB:</b> {'PostgreSQL' if USE_POSTGRES else 'SQLite'}</p><p><a href='/'>Back</a></p>")
+    except Exception as e:
+        return page(f"<h2>Read Cell Failed</h2><pre>{html.escape(str(e))}</pre>")
+
 @app.route('/test_db_write')
 @login_required
 @role_required('admin')
@@ -1222,6 +1238,7 @@ def index():
 <button type='button' onclick='openSnipBox()'>Snip / Print / Email</button>
 </div>
 <div class='mobileFab'>
+<button type='button' onclick='document.querySelector("button[name=cmd][value=save_only]").click()'>Save Now</button>
 <button type='button' onclick='document.querySelector("button[name=cmd][value=email_schedule]").click()'>Email PDF</button>
 <button type='button' onclick='document.querySelector("button[name=cmd][value=print_pdf]").click()'>Print PDF</button>
 </div>"""
@@ -1589,6 +1606,28 @@ document.addEventListener('DOMContentLoaded', function(){
     }
   }
 });
+
+/* ===== V8 STRONG AUTOSAVE DIAGNOSTIC ===== */
+function pmwForceAutosaveAll(){
+  const cells=document.querySelectorAll('.cellinput');
+  cells.forEach(el=>{
+    try{
+      if(window.syncCell) window.syncCell(el);
+      if(typeof autosaveCell === 'function') autosaveCell(el);
+    }catch(e){}
+  });
+  showSaveStatus('Saving all...');
+}
+document.addEventListener('DOMContentLoaded', function(){
+  const form=document.getElementById('sheetForm');
+  if(form){
+    form.addEventListener('submit', function(){
+      document.querySelectorAll('.cellinput').forEach(el=>{
+        try{ if(window.syncCell) window.syncCell(el); }catch(e){}
+      });
+    });
+  }
+});
 </script>
 </form>"""
     body += "</div>"
@@ -1601,7 +1640,9 @@ def save_command():
     sheet=request.form.get('sheet','Fabrication Schedule')
     cmd=request.form.get('cmd','save')
     save_posted_cells(sheet)
-    if cmd=='sort_numbering':
+    if cmd=='save_only':
+        log('SAVE_NOW', sheet); flash('Saved to database.')
+    elif cmd=='sort_numbering':
         sort_side(sheet,1,2,3); log('SORT_NUMBERING',sheet); flash('Numbering sorted.')
     elif cmd=='sort_fabrication':
         sort_side(sheet,4,5,6); log('SORT_FABRICATION',sheet); flash('Fabrication sorted.')
@@ -1927,7 +1968,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP Cloud Test v7')
+    print('PMW Ticket + Fabrication APP Cloud Test v8')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
