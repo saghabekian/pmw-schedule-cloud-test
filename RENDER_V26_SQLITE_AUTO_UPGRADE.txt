@@ -1,0 +1,23 @@
+PMW Render v26 SQLite Auto Upgrade
+
+This fixes:
+sqlite3.OperationalError: no such column: bg_color
+
+You do NOT need Render Shell.
+
+Steps:
+1. Upload/replace all files in GitHub.
+2. Commit changes.
+3. Render > pmw-schedule-cloud-test > Manual Deploy > Deploy latest commit.
+4. Open the app.
+
+This version automatically adds missing SQLite columns on startup:
+- bg_color
+- text_color
+- link_path
+- link_label
+- font_size
+- bold
+- rich_html
+
+Keep DATABASE_URL removed/blank for this v26 SQLite reset.

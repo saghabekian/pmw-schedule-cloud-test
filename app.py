@@ -7,7 +7,7 @@ from werkzeug.utils import secure_filename
 from openpyxl import load_workbook
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v26 Render Clean Base"
+APP_VERSION = "v26 SQLite Auto Upgrade"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -17,6 +17,75 @@ os.makedirs(EXPORT_FOLDER, exist_ok=True)
 
 DISPLAY_COLS = [1,2,3,4,5,6]
 ROLE_LEVEL = {"viewer":1,"editor":2,"admin":3}
+
+
+def auto_upgrade_sqlite_schema():
+    """Safe startup upgrade for existing SQLite DBs on Render/free hosting.
+    Adds newer columns that older DB files may be missing.
+    """
+    try:
+        con = sqlite3.connect(DB_PATH)
+        cur = con.cursor()
+
+        cur.execute("""CREATE TABLE IF NOT EXISTS users(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE,
+            password_hash TEXT,
+            role TEXT,
+            active INTEGER DEFAULT 1,
+            created_at TEXT
+        )""")
+
+        cur.execute("""CREATE TABLE IF NOT EXISTS workbook_cells(
+            sheet_name TEXT,
+            row_num INTEGER,
+            col_num INTEGER,
+            value TEXT DEFAULT '',
+            updated_by TEXT DEFAULT '',
+            updated_at TEXT DEFAULT '',
+            PRIMARY KEY(sheet_name,row_num,col_num)
+        )""")
+
+        for coldef in [
+            "bg_color TEXT DEFAULT ''",
+            "text_color TEXT DEFAULT ''",
+            "link_path TEXT DEFAULT ''",
+            "link_label TEXT DEFAULT ''",
+            "font_size TEXT DEFAULT ''",
+            "bold TEXT DEFAULT ''",
+            "rich_html TEXT DEFAULT ''"
+        ]:
+            try:
+                cur.execute("ALTER TABLE workbook_cells ADD COLUMN " + coldef)
+            except sqlite3.OperationalError:
+                pass
+
+        cur.execute("""CREATE TABLE IF NOT EXISTS ticket_links(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_number TEXT,
+            subject TEXT,
+            sender TEXT,
+            received TEXT,
+            file_path TEXT UNIQUE,
+            created_at TEXT
+        )""")
+
+        cur.execute("""CREATE TABLE IF NOT EXISTS audit_log(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT,
+            action TEXT,
+            details TEXT,
+            created_at TEXT
+        )""")
+
+        con.commit()
+        con.close()
+        print("SQLite schema auto-upgrade complete:", DB_PATH)
+    except Exception as e:
+        print("SQLite schema auto-upgrade failed:", repr(e))
+
+auto_upgrade_sqlite_schema()
+
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "pmw-local-dev-secret")
@@ -667,7 +736,7 @@ def reveal_file(path):
 
 def cloud_notice_banner():
     if os.environ.get("RENDER"):
-        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render cloud test: v26 clean base. This uses SQLite for layout/workflow testing first. PostgreSQL should be added back after this base is confirmed.</div>"
+        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 SQLite Auto Upgrade: old database columns are upgraded automatically on startup.</div>"
     return ""
 
 BASE = """
@@ -1722,7 +1791,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v26 Render Clean Base')
+    print('PMW Ticket + Fabrication APP v26 SQLite Auto Upgrade')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
