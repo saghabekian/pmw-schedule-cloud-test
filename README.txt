@@ -1,4 +1,4 @@
-PMW Ticket + Fabrication APP v25
+PMW Ticket + Fabrication APP v26
 
 Built from your best app(2).py file.
 
@@ -95,4 +95,18 @@ V25 AUTO SAVE:
 - Other devices should refresh the page to see changes.
 - Keep the PC running START_APP.bat as the server.
 
-Cloud Test v2 Startup Fix: initializes database columns when Render imports the app with gunicorn.
+
+V26:
+- Built from working v25.
+- PC desktop arrow keys move between normal cells.
+- iPhone behavior is left alone.
+- Auto-save remains in place.
+- Added basic cloud prep files:
+  - render.yaml
+  - gunicorn in requirements.txt
+  - app uses cloud PORT automatically
+
+Important cloud note:
+The current app still uses SQLite. That is OK for a short cloud test with a few users,
+but the final production cloud version should move to PostgreSQL so multiple users
+and backups are much safer.

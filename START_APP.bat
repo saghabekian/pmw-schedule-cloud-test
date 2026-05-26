@@ -4,8 +4,8 @@ pushd "%~dp0"
 
 echo.
 echo ==========================================
-echo PMW Ticket + Fabrication APP v25
-echo Auto Save - PC + iPhone Testing
+echo PMW Ticket + Fabrication APP v26
+echo Desktop Arrows + Cloud Prep
 echo ==========================================
 echo.
 echo This does NOT map network drives and does NOT create Windows users.
@@ -30,7 +30,7 @@ echo Examples:
 echo   This PC: http://127.0.0.1:5050
 echo   iPhone:  http://YOUR-PC-IP:5050
 echo.
-echo Starting PMW APP v25...
+echo Starting PMW APP v26...
 echo Keep this black window open while testing.
 echo.
 

@@ -1,0 +1,16 @@
+PMW Render Restart From v26
+
+This package is made from the v26 ZIP you uploaded.
+
+Steps:
+1. Open GitHub repo: pmw-schedule-cloud-test
+2. Upload/replace all existing files with the files from this folder.
+3. Commit changes.
+4. Open Render > pmw-schedule-cloud-test.
+5. For this reset, remove DATABASE_URL from Environment temporarily.
+6. Manual Deploy > Deploy latest commit.
+7. Open the Render URL.
+8. Confirm the version says v26 Render Clean Base.
+
+This is to confirm the app/layout/features first.
+After this clean base is working, add PostgreSQL back carefully.

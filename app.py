@@ -7,9 +7,9 @@ from werkzeug.utils import secure_filename
 from openpyxl import load_workbook
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "Cloud Test v2 Startup Fix"
+APP_VERSION = "v26 Render Clean Base"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.environ.get("PMW_SQLITE_PATH", os.path.join(APP_DIR, "pmw_schedule.db"))
+DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
 EXPORT_FOLDER = os.path.join(APP_DIR, "exports")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -665,9 +665,9 @@ def reveal_file(path):
         pass
 
 
-def cloud_storage_warning():
-    if os.environ.get("RENDER") and not os.environ.get("DATABASE_URL"):
-        return "<div class='flash'>Cloud test is running without PostgreSQL. This is OK for testing, but data may reset if the free server restarts. Add Render PostgreSQL for persistent company use.</div>"
+def cloud_notice_banner():
+    if os.environ.get("RENDER"):
+        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render cloud test: v26 clean base. This uses SQLite for layout/workflow testing first. PostgreSQL should be added back after this base is confirmed.</div>"
     return ""
 
 BASE = """
@@ -890,7 +890,7 @@ BASE = """
 {{body|safe}}</body></html>
 """
 
-def page(body): return render_template_string(BASE, body=cloud_storage_warning()+body, app_name=APP_NAME, version=APP_VERSION, can_admin=can('admin'))
+def page(body): return render_template_string(BASE, body=cloud_notice_banner()+body, app_name=APP_NAME, version=APP_VERSION, can_admin=can('admin'))
 
 @app.route('/login', methods=['GET','POST'])
 def login():
@@ -1356,6 +1356,55 @@ document.addEventListener('DOMContentLoaded', function(){
     }
   }
 });
+
+/* ===== V26 DESKTOP-ONLY ARROW NAVIGATION ===== */
+function pmwIsDesktopForArrows(){
+  return window.matchMedia && window.matchMedia('(min-width: 801px)').matches;
+}
+function pmwCellAt(row, col){
+  return document.querySelector(`.cellinput[data-row="${row}"][data-col="${col}"]`);
+}
+function pmwMoveCell(current, rowDelta, colDelta){
+  if(!current || !pmwIsDesktopForArrows()) return false;
+  const r=parseInt(current.dataset.row || '0',10);
+  const c=parseInt(current.dataset.col || '0',10);
+  const next=pmwCellAt(r + rowDelta, c + colDelta);
+  if(next){
+    try{ if(window.syncCell) window.syncCell(current); }catch(e){}
+    next.focus();
+    if(next.select) next.select();
+    try{
+      if(window.selectOnly) window.selectOnly(next);
+    }catch(e){}
+    next.scrollIntoView({block:'nearest', inline:'nearest'});
+    return true;
+  }
+  return false;
+}
+document.addEventListener('keydown', function(e){
+  if(!pmwIsDesktopForArrows()) return;
+  const el=document.activeElement;
+  if(!el || !el.classList || !el.classList.contains('cellinput')) return;
+
+  // Let Alt+Arrow keep normal cursor/navigation behavior if needed.
+  if(e.altKey) return;
+
+  // If a rich text cell is actively being edited, keep arrows inside the text.
+  // Plain spreadsheet cells get Excel-like arrow movement.
+  const isRich = el.classList.contains('richCell');
+  if(isRich && !e.ctrlKey) return;
+
+  let moved=false;
+  if(e.key === 'ArrowUp') moved=pmwMoveCell(el,-1,0);
+  if(e.key === 'ArrowDown') moved=pmwMoveCell(el,1,0);
+  if(e.key === 'ArrowLeft') moved=pmwMoveCell(el,0,-1);
+  if(e.key === 'ArrowRight') moved=pmwMoveCell(el,0,1);
+
+  if(moved){
+    e.preventDefault();
+    e.stopPropagation();
+  }
+}, true);
 </script>
 </form>"""
     body += "</div>"
@@ -1663,30 +1712,6 @@ def audit():
     for r in rows: body += f"<tr><td>{r['created_at']}</td><td>{html.escape(r['username'] or '')}</td><td>{r['action']}</td><td>{html.escape(r['details'] or '')}</td></tr>"
     return page(body+'</table>')
 
-
-def startup_init_for_cloud():
-    """Run database setup when imported by gunicorn/Render, not only when run locally."""
-    try:
-        init_db()
-        con = db()
-        try:
-            n = con.execute('SELECT COUNT(*) FROM workbook_cells').fetchone()[0]
-        except Exception:
-            n = 0
-        con.close()
-        starter = os.path.join(APP_DIR, 'Ticket +Fabrication-ACTIVE(1).xlsm')
-        if n == 0 and os.path.exists(starter):
-            with app.test_request_context('/'):
-                session['username'] = 'system'
-                try:
-                    import_workbook(starter)
-                except Exception as e:
-                    print('Starter import skipped:', e)
-    except Exception as e:
-        print('Startup database initialization failed:', e)
-
-startup_init_for_cloud()
-
 if __name__ == '__main__':
     init_db()
     con=db(); n=con.execute('SELECT COUNT(*) FROM workbook_cells').fetchone()[0]; con.close()
@@ -1697,7 +1722,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP Cloud Test v2')
+    print('PMW Ticket + Fabrication APP v26 Render Clean Base')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
