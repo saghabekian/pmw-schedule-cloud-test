@@ -1,0 +1,20 @@
+PMW Render v27 Admin User Roles
+
+Adds an admin Users page:
+- Create new users
+- Choose role: viewer, editor, admin
+- Change a user's role later
+- Reset user password
+- Disable/enable users
+
+Roles:
+viewer = view only
+editor = view and edit schedule/tickets
+admin = full access including user management
+
+Deploy:
+1. Upload/replace files in GitHub.
+2. Commit changes.
+3. Render > Manual Deploy > Deploy latest commit.
+4. Login as admin/admin123.
+5. Click Users.

@@ -7,7 +7,7 @@ from werkzeug.utils import secure_filename
 from openpyxl import load_workbook
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v26 SQLite Auto Upgrade"
+APP_VERSION = "v27 Admin User Roles"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -736,7 +736,7 @@ def reveal_file(path):
 
 def cloud_notice_banner():
     if os.environ.get("RENDER"):
-        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 SQLite Auto Upgrade: old database columns are upgraded automatically on startup.</div>"
+        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Admin User Roles: old database columns are upgraded automatically on startup.</div>"
     return ""
 
 BASE = """
@@ -952,6 +952,14 @@ BASE = """
     font-size:17px !important;
   }
 }
+
+
+.userform{background:white;border:1px solid #bbb;padding:14px;margin:10px 0;box-shadow:0 1px 3px #ccc}
+.userform input,.userform select{padding:8px;margin:4px;min-width:160px}
+.rolebadge{display:inline-block;padding:3px 8px;border-radius:12px;font-weight:bold}
+.role-admin{background:#d9ead3}
+.role-editor{background:#fff2cc}
+.role-viewer{background:#d9eaf7}
 
 </style></head><body>
 {% if session.get('user_id') %}<div class='top'><div class='brand'>{{app_name}} <span style='font-size:12px'>{{version}}</span></div><div class='nav'><span>{{session.username}} / {{session.role}}</span><a href='/'>Workbook</a><a href='/tickets'>Tickets</a>{% if can_admin %}<a href='/users'>Users</a><a href='/audit'>Audit</a>{% endif %}<a href='/logout'>Logout</a></div></div>{% endif %}
@@ -1767,10 +1775,160 @@ def autosave_cell():
 @login_required
 @role_required('admin')
 def users():
-    con=db(); rows=con.execute('SELECT username,role,active,created_at FROM users ORDER BY username').fetchall(); con.close()
-    body='<table class="admin"><tr><th>User</th><th>Role</th><th>Active</th><th>Created</th></tr>'
-    for r in rows: body += f"<tr><td>{html.escape(r['username'])}</td><td>{r['role']}</td><td>{'Yes' if r['active'] else 'No'}</td><td>{r['created_at']}</td></tr>"
-    return page(body+'</table>')
+    con=db()
+    rows=con.execute("SELECT id,username,role,active,created_at FROM users ORDER BY username").fetchall()
+    con.close()
+
+    role_options = "<option value='viewer'>viewer - can only view</option><option value='editor'>editor - can view and edit schedule</option><option value='admin'>admin - full access</option>"
+
+    body = """
+    <h2>Admin - Users & Permissions</h2>
+    <div class='userform'>
+      <h3>Create New User</h3>
+      <form method='post' action='/users/create'>
+        <input name='username' placeholder='username' required>
+        <input name='password' placeholder='password' required>
+        <select name='role'>""" + role_options + """</select>
+        <button class='green'>Create User</button>
+      </form>
+      <p class='small'><b>viewer</b> can only view. <b>editor</b> can edit schedules/tickets. <b>admin</b> can manage users.</p>
+    </div>
+    <table class='admin'>
+      <tr><th>Username</th><th>Role</th><th>Active</th><th>Created</th><th>Change Role</th><th>Password</th><th>Status</th></tr>
+    """
+
+    for u in rows:
+        uid=u['id']
+        username=html.escape(u['username'] or '')
+        role=u['role'] or 'viewer'
+        active='Yes' if int(u['active'] or 0)==1 else 'No'
+        role_class='role-' + html.escape(role)
+        selected_viewer='selected' if role=='viewer' else ''
+        selected_editor='selected' if role=='editor' else ''
+        selected_admin='selected' if role=='admin' else ''
+        disable_self = "disabled" if u['username']==session.get('username') else ""
+
+        body += f"""
+        <tr>
+          <td><b>{username}</b></td>
+          <td><span class='rolebadge {role_class}'>{html.escape(role)}</span></td>
+          <td>{active}</td>
+          <td>{html.escape(u['created_at'] or '')}</td>
+          <td>
+            <form method='post' action='/users/update_role' style='display:inline-flex;gap:5px'>
+              <input type='hidden' name='user_id' value='{uid}'>
+              <select name='role'>
+                <option value='viewer' {selected_viewer}>viewer</option>
+                <option value='editor' {selected_editor}>editor</option>
+                <option value='admin' {selected_admin}>admin</option>
+              </select>
+              <button>Update</button>
+            </form>
+          </td>
+          <td>
+            <form method='post' action='/users/reset_password' style='display:inline-flex;gap:5px'>
+              <input type='hidden' name='user_id' value='{uid}'>
+              <input name='password' placeholder='new password'>
+              <button>Reset</button>
+            </form>
+          </td>
+          <td>
+            <form method='post' action='/users/toggle_active' style='display:inline'>
+              <input type='hidden' name='user_id' value='{uid}'>
+              <button {disable_self}>{'Disable' if int(u['active'] or 0)==1 else 'Enable'}</button>
+            </form>
+          </td>
+        </tr>
+        """
+
+    body += "</table>"
+    return page(body)
+
+@app.route('/users/create', methods=['POST'])
+@login_required
+@role_required('admin')
+def users_create():
+    username=(request.form.get('username') or '').strip()
+    password=(request.form.get('password') or '').strip()
+    role=(request.form.get('role') or 'viewer').strip()
+    if role not in ('viewer','editor','admin'):
+        role='viewer'
+    if not username or not password:
+        flash('Username and password are required.')
+        return redirect('/users')
+    con=db()
+    try:
+        con.execute("INSERT INTO users(username,password_hash,role,active,created_at) VALUES(?,?,?,?,?)",
+                    (username,generate_password_hash(password),role,1,datetime.now().isoformat(timespec='seconds')))
+        con.commit()
+        log('CREATE_USER', f'{username} / {role}')
+        flash(f'Created user {username} as {role}.')
+    except Exception as e:
+        flash('Could not create user: ' + str(e))
+    con.close()
+    return redirect('/users')
+
+@app.route('/users/update_role', methods=['POST'])
+@login_required
+@role_required('admin')
+def users_update_role():
+    uid=request.form.get('user_id')
+    role=(request.form.get('role') or 'viewer').strip()
+    if role not in ('viewer','editor','admin'):
+        role='viewer'
+    con=db()
+    row=con.execute("SELECT username FROM users WHERE id=?",(uid,)).fetchone()
+    if row and row['username']==session.get('username') and role!='admin':
+        flash('You cannot remove admin from your own logged-in account.')
+        con.close()
+        return redirect('/users')
+    con.execute("UPDATE users SET role=? WHERE id=?",(role,uid))
+    con.commit()
+    con.close()
+    log('UPDATE_USER_ROLE', f'id {uid} -> {role}')
+    flash('User role updated.')
+    return redirect('/users')
+
+@app.route('/users/reset_password', methods=['POST'])
+@login_required
+@role_required('admin')
+def users_reset_password():
+    uid=request.form.get('user_id')
+    password=(request.form.get('password') or '').strip()
+    if not password:
+        flash('Enter a new password first.')
+        return redirect('/users')
+    con=db()
+    con.execute("UPDATE users SET password_hash=? WHERE id=?",(generate_password_hash(password),uid))
+    con.commit()
+    con.close()
+    log('RESET_USER_PASSWORD', f'id {uid}')
+    flash('Password reset.')
+    return redirect('/users')
+
+@app.route('/users/toggle_active', methods=['POST'])
+@login_required
+@role_required('admin')
+def users_toggle_active():
+    uid=request.form.get('user_id')
+    con=db()
+    row=con.execute("SELECT username,active FROM users WHERE id=?",(uid,)).fetchone()
+    if not row:
+        flash('User not found.')
+        con.close()
+        return redirect('/users')
+    if row['username']==session.get('username'):
+        flash('You cannot disable your own logged-in account.')
+        con.close()
+        return redirect('/users')
+    new_active=0 if int(row['active'] or 0)==1 else 1
+    con.execute("UPDATE users SET active=? WHERE id=?",(new_active,uid))
+    con.commit()
+    con.close()
+    log('TOGGLE_USER_ACTIVE', f'id {uid} -> {new_active}')
+    flash('User status updated.')
+    return redirect('/users')
+
 
 @app.route('/audit')
 @login_required
@@ -1791,7 +1949,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v26 SQLite Auto Upgrade')
+    print('PMW Ticket + Fabrication APP v27 Admin User Roles')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
