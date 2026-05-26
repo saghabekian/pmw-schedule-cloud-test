@@ -5,24 +5,9 @@ from flask import Flask, request, redirect, url_for, session, render_template_st
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from openpyxl import load_workbook
-# PostgreSQL driver support.
-# psycopg3 works better on newer Python versions used by some hosts.
-try:
-    import psycopg
-    from psycopg.rows import dict_row
-except Exception:
-    psycopg = None
-    dict_row = None
-
-try:
-    import psycopg2
-    import psycopg2.extras
-except Exception:
-    psycopg2 = None
-
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "Cloud Test v6 Postgres SQL Fix"
+APP_VERSION = "Cloud Test v2 Startup Fix"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("PMW_SQLITE_PATH", os.path.join(APP_DIR, "pmw_schedule.db"))
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -36,188 +21,48 @@ ROLE_LEVEL = {"viewer":1,"editor":2,"admin":3}
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "pmw-local-dev-secret")
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = "postgresql://" + DATABASE_URL[len("postgres://"):]
-
-PG_DRIVER = "psycopg3" if (DATABASE_URL and psycopg) else ("psycopg2" if (DATABASE_URL and psycopg2) else "")
-USE_POSTGRES = bool(DATABASE_URL and PG_DRIVER)
-
-def pg_upsert_query(query):
-    q = query.strip()
-    if q.upper().startswith("INSERT OR REPLACE INTO WORKBOOK_CELLS"):
-        q = q.replace("INSERT OR REPLACE INTO workbook_cells", "INSERT INTO workbook_cells")
-        if "ON CONFLICT" not in q:
-            q += " ON CONFLICT(sheet_name,row_num,col_num) DO UPDATE SET value=EXCLUDED.value, bg_color=EXCLUDED.bg_color, text_color=EXCLUDED.text_color, link_path=EXCLUDED.link_path, link_label=EXCLUDED.link_label, font_size=EXCLUDED.font_size, bold=EXCLUDED.bold, rich_html=EXCLUDED.rich_html, updated_by=EXCLUDED.updated_by, updated_at=EXCLUDED.updated_at"
-    elif q.upper().startswith("INSERT OR REPLACE INTO"):
-        q = q.replace("INSERT OR REPLACE INTO", "INSERT INTO")
-    return q.replace("?", "%s")
-
-class Pg3CompatCursor:
-    def __init__(self, cur):
-        self.cur = cur
-    def execute(self, query, params=()):
-        self.cur.execute(pg_upsert_query(query), params or ())
-        return self
-    def fetchone(self):
-        return self.cur.fetchone()
-    def fetchall(self):
-        return self.cur.fetchall()
-    @property
-    def lastrowid(self):
-        try:
-            self.cur.execute("SELECT LASTVAL() AS id")
-            row = self.cur.fetchone()
-            return row["id"] if row else None
-        except Exception:
-            return None
-
-class Pg3CompatConnection:
-    def __init__(self, con):
-        self.con = con
-    def cursor(self):
-        return Pg3CompatCursor(self.con.cursor(row_factory=dict_row))
-    def execute(self, query, params=()):
-        cur = self.cursor()
-        return cur.execute(query, params)
-    def commit(self):
-        self.con.commit()
-    def close(self):
-        self.con.close()
-
-class Pg2CompatCursor:
-    def __init__(self, cur):
-        self.cur = cur
-    def execute(self, query, params=()):
-        self.cur.execute(pg_upsert_query(query), params or ())
-        return self
-    def fetchone(self):
-        return self.cur.fetchone()
-    def fetchall(self):
-        return self.cur.fetchall()
-    @property
-    def lastrowid(self):
-        try:
-            self.cur.execute("SELECT LASTVAL() AS id")
-            row = self.cur.fetchone()
-            return row["id"] if row else None
-        except Exception:
-            return None
-
-class Pg2CompatConnection:
-    def __init__(self, con):
-        self.con = con
-    def cursor(self):
-        return Pg2CompatCursor(self.con.cursor(cursor_factory=psycopg2.extras.RealDictCursor))
-    def execute(self, query, params=()):
-        cur = self.cursor()
-        return cur.execute(query, params)
-    def commit(self):
-        self.con.commit()
-    def close(self):
-        self.con.close()
-
-
 def db():
-    if USE_POSTGRES and PG_DRIVER == "psycopg3":
-        con = psycopg.connect(DATABASE_URL)
-        return Pg3CompatConnection(con)
-    if USE_POSTGRES and PG_DRIVER == "psycopg2":
-        con = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
-        return Pg2CompatConnection(con)
     con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
     return con
 
 def init_db():
-
     con=db(); cur=con.cursor()
-
-    if USE_POSTGRES:
-        cur.execute("""CREATE TABLE IF NOT EXISTS users(
-            id SERIAL PRIMARY KEY,
-            username TEXT UNIQUE,
-            password_hash TEXT,
-            role TEXT,
-            active INTEGER DEFAULT 1,
-            created_at TEXT
-        )""")
-        cur.execute("""CREATE TABLE IF NOT EXISTS workbook_cells(
-            sheet_name TEXT,
-            row_num INTEGER,
-            col_num INTEGER,
-            value TEXT DEFAULT '',
-            updated_by TEXT DEFAULT '',
-            updated_at TEXT DEFAULT '',
-            PRIMARY KEY(sheet_name,row_num,col_num)
-        )""")
-        for coldef in [
-            "bg_color TEXT DEFAULT ''",
-            "text_color TEXT DEFAULT ''",
-            "link_path TEXT DEFAULT ''",
-            "link_label TEXT DEFAULT ''",
-            "font_size TEXT DEFAULT ''",
-            "bold TEXT DEFAULT ''",
-            "rich_html TEXT DEFAULT ''"
-        ]:
-            try:
-                cur.execute("ALTER TABLE workbook_cells ADD COLUMN " + coldef)
-            except Exception:
-                con.con.rollback()
-        cur.execute("""CREATE TABLE IF NOT EXISTS ticket_links(
-            id SERIAL PRIMARY KEY,
-            job_number TEXT,
-            subject TEXT,
-            sender TEXT,
-            received TEXT,
-            file_path TEXT UNIQUE,
-            created_at TEXT
-        )""")
-        cur.execute("""CREATE TABLE IF NOT EXISTS audit_log(
-            id SERIAL PRIMARY KEY,
-            username TEXT,
-            action TEXT,
-            details TEXT,
-            created_at TEXT
-        )""")
-    else:
-        cur.execute("""CREATE TABLE IF NOT EXISTS users(
-            id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password_hash TEXT, role TEXT, active INTEGER DEFAULT 1, created_at TEXT)""")
-        cur.execute("""CREATE TABLE IF NOT EXISTS workbook_cells(
-            sheet_name TEXT, row_num INTEGER, col_num INTEGER, value TEXT DEFAULT '', updated_by TEXT DEFAULT '', updated_at TEXT DEFAULT '',
-            PRIMARY KEY(sheet_name,row_num,col_num))""")
-        for coldef in [
-            "bg_color TEXT DEFAULT ''",
-            "text_color TEXT DEFAULT ''",
-            "link_path TEXT DEFAULT ''",
-            "link_label TEXT DEFAULT ''",
-            "font_size TEXT DEFAULT ''",
-            "bold TEXT DEFAULT ''",
-            "rich_html TEXT DEFAULT ''"
-        ]:
-            try:
-                cur.execute("ALTER TABLE workbook_cells ADD COLUMN " + coldef)
-            except sqlite3.OperationalError:
-                pass
-        cur.execute("""CREATE TABLE IF NOT EXISTS ticket_links(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            job_number TEXT,
-            subject TEXT,
-            sender TEXT,
-            received TEXT,
-            file_path TEXT UNIQUE,
-            created_at TEXT
-        )""")
-        cur.execute("""CREATE TABLE IF NOT EXISTS audit_log(
-            id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, action TEXT, details TEXT, created_at TEXT)""")
-
+    cur.execute("""CREATE TABLE IF NOT EXISTS users(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password_hash TEXT, role TEXT, active INTEGER DEFAULT 1, created_at TEXT)""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS workbook_cells(
+        sheet_name TEXT, row_num INTEGER, col_num INTEGER, value TEXT DEFAULT '', updated_by TEXT DEFAULT '', updated_at TEXT DEFAULT '',
+        PRIMARY KEY(sheet_name,row_num,col_num))""")
+    for coldef in [
+        "bg_color TEXT DEFAULT ''",
+        "text_color TEXT DEFAULT ''",
+        "link_path TEXT DEFAULT ''",
+        "link_label TEXT DEFAULT ''",
+        "font_size TEXT DEFAULT ''",
+        "bold TEXT DEFAULT ''",
+        "rich_html TEXT DEFAULT ''"
+    ]:
+        try:
+            cur.execute("ALTER TABLE workbook_cells ADD COLUMN " + coldef)
+        except sqlite3.OperationalError:
+            pass
+    cur.execute("""CREATE TABLE IF NOT EXISTS ticket_links(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_number TEXT,
+        subject TEXT,
+        sender TEXT,
+        received TEXT,
+        file_path TEXT UNIQUE,
+        created_at TEXT
+    )""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS audit_log(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, action TEXT, details TEXT, created_at TEXT)""")
     for u,p,r in [("admin","admin123","admin"),("shop","shop123","editor"),("viewer","view123","viewer")]:
         if not cur.execute("SELECT id FROM users WHERE username=?",(u,)).fetchone():
             cur.execute("INSERT INTO users(username,password_hash,role,created_at) VALUES(?,?,?,?)",(u,generate_password_hash(p),r,datetime.now().isoformat(timespec='seconds')))
     con.commit(); con.close()
 
 def log(action, details=""):
-
     con=db(); con.execute("INSERT INTO audit_log(username,action,details,created_at) VALUES(?,?,?,?)",(session.get('username','system'),action,details,datetime.now().isoformat(timespec='seconds'))); con.commit(); con.close()
 
 def can(role): return ROLE_LEVEL.get(session.get('role',''),0) >= ROLE_LEVEL[role]
@@ -260,19 +105,8 @@ def import_workbook(path):
     con.commit(); con.close(); log("IMPORT_WORKBOOK", os.path.basename(path)); return count
 
 def sheet_names():
-    con=db()
-    if USE_POSTGRES:
-        rows=con.execute("""
-            SELECT sheet_name
-            FROM workbook_cells
-            GROUP BY sheet_name
-            ORDER BY MIN(CASE WHEN sheet_name='Fabrication Schedule' THEN 0 ELSE 1 END), sheet_name
-        """).fetchall()
-    else:
-        rows=con.execute("SELECT DISTINCT sheet_name FROM workbook_cells ORDER BY CASE WHEN sheet_name='Fabrication Schedule' THEN 0 ELSE 1 END, sheet_name").fetchall()
-    con.close()
-    names=[r['sheet_name'] for r in rows]
-    return names or ['Fabrication Schedule']
+    con=db(); rows=con.execute("SELECT DISTINCT sheet_name FROM workbook_cells ORDER BY CASE WHEN sheet_name='Fabrication Schedule' THEN 0 ELSE 1 END, sheet_name").fetchall(); con.close()
+    return [r[0] for r in rows]
 
 def cells_for(sheet):
     con=db(); rows=con.execute("SELECT row_num,col_num,value FROM workbook_cells WHERE sheet_name=?",(sheet,)).fetchall(); con.close()
@@ -831,35 +665,6 @@ def reveal_file(path):
         pass
 
 
-
-def db_mode_banner():
-    mode = ("PostgreSQL (" + PG_DRIVER + ")") if USE_POSTGRES else "SQLite TEMP"
-    color = "#d4edda" if USE_POSTGRES else "#f8d7da"
-    border = "#28a745" if USE_POSTGRES else "#dc3545"
-    extra = ""
-    if os.environ.get("RENDER") and not USE_POSTGRES:
-        extra = " — WARNING: data can reset after redeploy. DATABASE_URL is not connected."
-    return f"<div style='background:{color};border:2px solid {border};padding:8px;margin:8px;font-weight:bold'>Database Mode: {mode}{extra}</div>"
-
-@app.route('/db_check')
-@login_required
-@role_required('admin')
-def db_check():
-    try:
-        con=db()
-        cur=con.cursor()
-        cur.execute("SELECT COUNT(*) AS n FROM workbook_cells")
-        row=cur.fetchone()
-        try:
-            count = row["n"]
-        except Exception:
-            count = row[0]
-        con.close()
-        return page(f"<h2>Database Check</h2><p><b>Mode:</b> {'PostgreSQL' if USE_POSTGRES else 'SQLite TEMP'}</p><p><b>DATABASE_URL set:</b> {'YES' if bool(DATABASE_URL) else 'NO'}</p><p><b>Postgres driver:</b> {PG_DRIVER or 'NONE'}</p><p><b>psycopg3 loaded:</b> {'YES' if bool(psycopg) else 'NO'}</p><p><b>psycopg2 loaded:</b> {'YES' if bool(psycopg2) else 'NO'}</p><p><b>Cell rows:</b> {count}</p>")
-    except Exception as e:
-        return page(f"<h2>Database Check Failed</h2><pre>{html.escape(str(e))}</pre>")
-
-
 def cloud_storage_warning():
     if os.environ.get("RENDER") and not os.environ.get("DATABASE_URL"):
         return "<div class='flash'>Cloud test is running without PostgreSQL. This is OK for testing, but data may reset if the free server restarts. Add Render PostgreSQL for persistent company use.</div>"
@@ -1085,7 +890,7 @@ BASE = """
 {{body|safe}}</body></html>
 """
 
-def page(body): return render_template_string(BASE, body=db_mode_banner()+cloud_storage_warning()+body, app_name=APP_NAME, version=APP_VERSION, can_admin=can('admin'))
+def page(body): return render_template_string(BASE, body=cloud_storage_warning()+body, app_name=APP_NAME, version=APP_VERSION, can_admin=can('admin'))
 
 @app.route('/login', methods=['GET','POST'])
 def login():
@@ -1880,7 +1685,6 @@ def startup_init_for_cloud():
     except Exception as e:
         print('Startup database initialization failed:', e)
 
-print('PMW DB MODE:', 'PostgreSQL' if USE_POSTGRES else 'SQLite TEMP', 'DATABASE_URL set:', bool(DATABASE_URL), 'PG_DRIVER:', PG_DRIVER, 'psycopg3:', bool(psycopg), 'psycopg2:', bool(psycopg2))
 startup_init_for_cloud()
 
 if __name__ == '__main__':
@@ -1893,7 +1697,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP Cloud Test v6')
+    print('PMW Ticket + Fabrication APP Cloud Test v2')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)

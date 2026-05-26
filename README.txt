@@ -96,5 +96,3 @@ V25 AUTO SAVE:
 - Keep the PC running START_APP.bat as the server.
 
 Cloud Test v2 Startup Fix: initializes database columns when Render imports the app with gunicorn.
-
-Cloud Test v3 Postgres Ready: add DATABASE_URL environment variable in Render to use PostgreSQL.
