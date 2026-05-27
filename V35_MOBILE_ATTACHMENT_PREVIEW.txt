@@ -1,0 +1,18 @@
+PMW Render v35 Mobile Attachment Preview
+
+Built from stable v34.
+
+Only changes:
+- Makes Ticket Email + Attachments page mobile friendly.
+- PDF iframe scales better on iPhone.
+- Attachment buttons become full-width on phone.
+- Adds Open Full Screen button for easier iPhone PDF viewing.
+- Improves image preview and email body wrapping on phone.
+
+Keeps:
+- PostgreSQL persistence
+- User roles
+- Ticket upload
+- Email preview
+- Attachment extraction
+- Bulk save / side button stability

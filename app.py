@@ -19,7 +19,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v34 Postgres Bulk Save Fix"
+APP_VERSION = "v35 Mobile Attachment Preview"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -982,7 +982,7 @@ def reveal_file(path):
 
 def cloud_notice_banner():
     if os.environ.get("RENDER"):
-        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Postgres Bulk Save Fix: old database columns are upgraded automatically on startup.</div>"
+        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Mobile Attachment Preview: old database columns are upgraded automatically on startup.</div>"
     return ""
 
 
@@ -1214,6 +1214,100 @@ BASE = """
 .role-admin{background:#d9ead3}
 .role-editor{background:#fff2cc}
 .role-viewer{background:#d9eaf7}
+
+
+/* ===== V35 MOBILE TICKET / ATTACHMENT PREVIEW ===== */
+.ticketPreviewWrap{max-width:1180px;margin:0 auto;padding:10px}
+.ticketHeaderCard,.ticketAttachmentCard,.ticketBodyCard{
+  background:white;
+  border:1px solid #bbb;
+  padding:14px;
+  margin:10px 0;
+  box-sizing:border-box;
+}
+.ticketAttachmentArea{
+  background:#f7f7f7;
+  border:1px solid #bbb;
+  padding:12px;
+  margin:10px 0;
+}
+.ticketAttachmentFrame{
+  width:100%;
+  height:650px;
+  border:1px solid #ccc;
+  background:white;
+}
+.ticketAttachmentImage{
+  max-width:100%;
+  height:auto;
+  border:1px solid #ccc;
+  margin-top:8px;
+}
+.mobileOpenHint{display:none}
+
+@media (max-width: 800px){
+  body{
+    overflow-x:hidden;
+  }
+  .ticketPreviewWrap{
+    padding:6px;
+    width:100%;
+    max-width:100%;
+  }
+  .ticketHeaderCard,.ticketAttachmentCard,.ticketBodyCard,.ticketAttachmentArea{
+    padding:10px;
+    margin:8px 0;
+    width:100%;
+    max-width:100%;
+  }
+  .ticketHeaderCard p{
+    font-size:14px;
+    line-height:1.35;
+    word-break:break-word;
+  }
+  .ticketAttachmentCard b{
+    display:block;
+    font-size:16px;
+    word-break:break-word;
+    margin-bottom:8px;
+  }
+  .ticketAttachmentCard .btn,
+  .ticketHeaderCard .btn{
+    display:block;
+    width:100%;
+    box-sizing:border-box;
+    text-align:center;
+    margin:6px 0;
+    padding:12px 8px;
+    font-size:16px;
+  }
+  .ticketAttachmentFrame{
+    height:72vh;
+    min-height:420px;
+    width:100%;
+  }
+  .ticketAttachmentImage{
+    width:100%;
+    max-width:100%;
+  }
+  .ticketBodyCard{
+    font-size:15px !important;
+    line-height:1.45 !important;
+    word-break:break-word;
+    overflow-wrap:anywhere;
+  }
+  .mobileOpenHint{
+    display:block;
+    background:#fff3cd;
+    border:1px solid #d6b656;
+    padding:8px;
+    margin:8px 0;
+    font-size:14px;
+  }
+  h2,h3{
+    margin:10px 0;
+  }
+}
 
 </style></head><body>
 {% if session.get('user_id') %}<div class='top'><div class='brand'>{{app_name}} <span style='font-size:12px'>{{version}}</span></div><div class='nav'><span>{{session.username}} / {{session.role}}</span><a href='/'>Workbook</a><a href='/tickets'>Tickets</a>{% if can_admin %}<a href='/users'>Users</a><a href='/audit'>Audit</a>{% endif %}<a href='/logout'>Logout</a></div></div>{% endif %}
@@ -2101,31 +2195,33 @@ def ticket_view_email(ticket_id):
             ctype=(a['content_type'] or '').lower()
             view_url=f"/ticket_attachment/{aid}"
             dl_url=f"/ticket_attachment_download/{aid}"
-            attachments_html += f"<div style='background:white;border:1px solid #bbb;padding:12px;margin:10px 0'><b>{fname}</b><br><a class='btn green' href='{view_url}' target='_blank'>Open/Preview</a> <a class='btn' href='{dl_url}'>Download</a>"
+            attachments_html += f"<div class='ticketAttachmentCard'><b>{fname}</b><a class='btn green' href='{view_url}' target='_blank'>Open Full Screen</a> <a class='btn' href='{dl_url}'>Download</a>"
             if ctype.startswith('image/'):
-                attachments_html += f"<div><img src='{view_url}' style='max-width:100%;height:auto;border:1px solid #ccc;margin-top:8px'></div>"
+                attachments_html += f"<div><img src='{view_url}' class='ticketAttachmentImage'></div>"
             elif ctype == 'application/pdf':
-                attachments_html += f"<div style='margin-top:8px'><iframe src='{view_url}' style='width:100%;height:650px;border:1px solid #ccc'></iframe></div>"
+                attachments_html += f"<div class='mobileOpenHint'>On iPhone, tap <b>Open Full Screen</b> for easier PDF viewing and pinch zoom.</div><div style='margin-top:8px'><iframe src='{view_url}' class='ticketAttachmentFrame'></iframe></div>"
             else:
-                attachments_html += "<p class='small'>Preview may not be available for this file type. Use Download.</p>"
+                attachments_html += "<p class='small'>Preview may not be available for this file type. Use Download or Open Full Screen.</p>"
             attachments_html += "</div>"
 
     download = f"<a class='btn green' href='/ticket_download/{ticket_id}'>Download Original .msg</a>" if cloud_file else ""
     page_body = f"""
-    <h2>Ticket Email + Attachments</h2>
-    <div style='background:white;border:1px solid #bbb;padding:14px;margin:10px 0'>
-      <p><b>Subject:</b> {subject_html}</p>
-      <p><b>From:</b> {sender_html}</p>
-      <p><b>Date:</b> {date_html}</p>
-      <p><b>Preview Status:</b> {status_html}</p>
-      <p>{download} <a class='btn' href='/tickets'>Back to Tickets</a></p>
-    </div>
-    <div style='background:#f7f7f7;border:1px solid #bbb;padding:12px;margin:10px 0'>
-      {attachments_html}
-    </div>
-    <h3>Email Body</h3>
-    <div style='background:white;border:1px solid #bbb;padding:18px;font-size:16px;line-height:1.45;white-space:normal'>
-      {body_html}
+    <div class='ticketPreviewWrap'>
+      <h2>Ticket Email + Attachments</h2>
+      <div class='ticketHeaderCard'>
+        <p><b>Subject:</b> {subject_html}</p>
+        <p><b>From:</b> {sender_html}</p>
+        <p><b>Date:</b> {date_html}</p>
+        <p><b>Preview Status:</b> {status_html}</p>
+        <p>{download} <a class='btn' href='/tickets'>Back to Tickets</a></p>
+      </div>
+      <div class='ticketAttachmentArea'>
+        {attachments_html}
+      </div>
+      <h3>Email Body</h3>
+      <div class='ticketBodyCard'>
+        {body_html}
+      </div>
     </div>
     """
     return page(page_body)
@@ -2675,7 +2771,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v34 Postgres Bulk Save Fix')
+    print('PMW Ticket + Fabrication APP v35 Mobile Attachment Preview')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
