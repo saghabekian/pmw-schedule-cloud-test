@@ -1,0 +1,25 @@
+PMW Render v28 Postgres Persistence Only
+
+Built from stable v27 Admin User Roles.
+
+Only adds:
+- PostgreSQL persistence
+- Permanent users
+- Permanent schedule edits
+- Survives Render redeploy/restart
+
+Deploy:
+1. Upload/replace files in GitHub.
+2. Commit changes.
+3. Render > pmw-schedule-cloud-test > Environment.
+4. Make sure DATABASE_URL exists and is the Internal Database URL from pmw-schedule-db.
+5. Manual Deploy > Deploy latest commit.
+6. Open app.
+7. Confirm banner says: Database Mode: PostgreSQL Persistent.
+
+Test:
+1. Create a test user.
+2. Edit a cell.
+3. Refresh.
+4. Manual Deploy > Deploy latest commit.
+5. Confirm user and cell are still there.
