@@ -1,0 +1,21 @@
+PMW Render v34 Postgres Bulk Save Fix
+
+Built from v32 Ticket Attachment Preview.
+
+Purpose:
+- Fix Render crashes when clicking side buttons.
+- Uses one PostgreSQL connection per save/sort instead of one connection per cell.
+- Restores stability for:
+  - Sort Numbering
+  - Sort Fabrication
+  - Clear Schedule
+  - Delete Comments
+  - Print/Email/Snip commands that save first
+
+Test:
+1. Deploy v34.
+2. Type a few order numbers on Fabrication side.
+3. Click Sort Fabrication.
+4. Confirm no crash.
+5. Confirm envelope/email preview links still work.
+6. Test Clear Cell + Link.

@@ -19,7 +19,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v32 Ticket Attachment Preview"
+APP_VERSION = "v34 Postgres Bulk Save Fix"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -578,10 +578,9 @@ def open_path_on_this_pc(path):
         return False, str(e)
 
 
-def upsert_workbook_cell(sheet, r, c, val='', bg='', txt='', link='', label='', fsize='', bold='', rich='', user=''):
+
+def upsert_workbook_cell_cur(cur, sheet, r, c, val='', bg='', txt='', link='', label='', fsize='', bold='', rich='', user=''):
     now = datetime.now().isoformat(timespec='seconds')
-    con = db()
-    cur = con.cursor()
     if USE_POSTGRES:
         cur.execute("""
             INSERT INTO workbook_cells(
@@ -604,47 +603,62 @@ def upsert_workbook_cell(sheet, r, c, val='', bg='', txt='', link='', label='', 
         cur.execute("""INSERT OR REPLACE INTO workbook_cells(
             sheet_name,row_num,col_num,value,bg_color,text_color,link_path,link_label,font_size,bold,rich_html,updated_by,updated_at)
             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",(sheet,r,c,val,bg,txt,link,label,fsize,bold,rich,user,now))
+    return now
+
+
+def upsert_workbook_cell(sheet, r, c, val='', bg='', txt='', link='', label='', fsize='', bold='', rich='', user=''):
+    con = db()
+    cur = con.cursor()
+    now = upsert_workbook_cell_cur(cur, sheet, r, c, val, bg, txt, link, label, fsize, bold, rich, user)
     con.commit()
     con.close()
     return now
 
 
 def save_posted_cells(sheet):
-    for r in range(3,51):
-        for c in DISPLAY_COLS:
-            key=f"cell_{r}_{c}"
-            if key in request.form:
-                val=(request.form.get(key) or '').replace('\r',' ').replace('\n',' ').strip()
+    con = db()
+    cur = con.cursor()
+    user = session.get('username','')
+    try:
+        for r in range(3,51):
+            for c in DISPLAY_COLS:
+                key=f"cell_{r}_{c}"
+                if key in request.form:
+                    val=(request.form.get(key) or '').replace('\r',' ').replace('\n',' ').strip()
 
-                # V30: if the user deletes the visible cell text, clear the whole cell object,
-                # including hidden ticket/email link, envelope icon, colors, font settings, and rich text.
-                if val == '':
-                    upsert_workbook_cell(sheet,r,c,'','','','','','','','',session.get('username',''))
-                    continue
+                    # Blank visible cell clears everything including ticket links/icons.
+                    if val == '':
+                        upsert_workbook_cell_cur(cur, sheet,r,c,'','','','','','','','',user)
+                        continue
 
-                bg=(request.form.get(f"bg_{r}_{c}") or '').strip()
-                txt=(request.form.get(f"txt_{r}_{c}") or '').strip()
-                link=(request.form.get(f"link_{r}_{c}") or '').strip()
-                label=(request.form.get(f"label_{r}_{c}") or '').strip()
-                fsize=(request.form.get(f"fsize_{r}_{c}") or '').strip()
-                bold=(request.form.get(f"bold_{r}_{c}") or '').strip()
-                rich=(request.form.get(f"rich_{r}_{c}") or '').strip()
-                upsert_workbook_cell(sheet,r,c,val,bg,txt,link,label,fsize,bold,rich,session.get('username',''))
+                    bg=(request.form.get(f"bg_{r}_{c}") or '').strip()
+                    txt=(request.form.get(f"txt_{r}_{c}") or '').strip()
+                    link=(request.form.get(f"link_{r}_{c}") or '').strip()
+                    label=(request.form.get(f"label_{r}_{c}") or '').strip()
+                    fsize=(request.form.get(f"fsize_{r}_{c}") or '').strip()
+                    bold=(request.form.get(f"bold_{r}_{c}") or '').strip()
+                    rich=(request.form.get(f"rich_{r}_{c}") or '').strip()
+                    upsert_workbook_cell_cur(cur, sheet,r,c,val,bg,txt,link,label,fsize,bold,rich,user)
+        con.commit()
+    finally:
+        con.close()
 
 
 def sort_side(sheet, key_col, job_col, note_col):
-    """Sort one side of the schedule while keeping the whole row metadata together:
-    visible text, background color, text color, ticket/email link, and link label.
+    """Sort one side of the schedule using one DB connection.
+    Preserves values, colors, links, font settings, and rich text.
     """
-    con=db(); cur=con.cursor(); now=datetime.now().isoformat(timespec='seconds')
-    rows=[]; blanks=[]
+    side_cols = [key_col, job_col, note_col]
+    con=db()
+    cur=con.cursor()
+    user=session.get('username','')
 
     def sort_key(v):
-        s=str(v or '').strip()
+        st=str(v or '').strip()
         try:
-            return (0, float(s))
+            return (0, float(st))
         except Exception:
-            return (1, s.lower())
+            return (1, st.lower())
 
     def get_cell(r, c):
         row=cur.execute("""SELECT value,bg_color,text_color,link_path,link_label,font_size,bold,rich_html
@@ -663,28 +677,44 @@ def sort_side(sheet, key_col, job_col, note_col):
             "rich_html": row["rich_html"] or ""
         }
 
-    for r in range(3,51):
-        row_obj=[get_cell(r, c) for c in (key_col, job_col, note_col)]
-        if any(x["value"].strip() or x["bg_color"].strip() or x["text_color"].strip() or x["link_path"].strip() or x.get("font_size","").strip() or x.get("bold","").strip() or x.get("rich_html","").strip() for x in row_obj):
-            if row_obj[0]["value"].strip():
-                rows.append(row_obj)
-            else:
-                blanks.append(row_obj)
+    try:
+        rows=[]
+        for r in range(3,51):
+            row_obj=[get_cell(r, c) for c in side_cols]
+            if any(
+                x["value"].strip()
+                or x["bg_color"].strip()
+                or x["text_color"].strip()
+                or x["link_path"].strip()
+                or x["link_label"].strip()
+                or x["font_size"].strip()
+                or x["bold"].strip()
+                or x["rich_html"].strip()
+                for x in row_obj
+            ):
+                rows.append((sort_key(row_obj[0]["value"]), r, row_obj))
 
-    ordered=sorted(rows, key=lambda x: sort_key(x[0]["value"])) + blanks
+        rows.sort(key=lambda x: (x[0], x[1]))
 
-    for idx,r in enumerate(range(3,51)):
-        row_obj=ordered[idx] if idx < len(ordered) else [
-            {"value":"","bg_color":"","text_color":"","link_path":"","link_label":"","font_size":"","bold":"","rich_html":""},
-            {"value":"","bg_color":"","text_color":"","link_path":"","link_label":"","font_size":"","bold":"","rich_html":""},
-            {"value":"","bg_color":"","text_color":"","link_path":"","link_label":"","font_size":"","bold":"","rich_html":""}
-        ]
-        for c, cell in zip((key_col,job_col,note_col), row_obj):
-            cur.execute("""INSERT OR REPLACE INTO workbook_cells(
-                sheet_name,row_num,col_num,value,bg_color,text_color,link_path,link_label,font_size,bold,rich_html,updated_by,updated_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (sheet,r,c,cell["value"],cell["bg_color"],cell["text_color"],cell["link_path"],cell["link_label"],cell.get("font_size",""),cell.get("bold",""),cell.get("rich_html",""),session.get('username',''),now))
-    con.commit(); con.close()
+        for r in range(3,51):
+            for c in side_cols:
+                upsert_workbook_cell_cur(cur, sheet,r,c,'','','','','','','','',user)
+
+        target_r=3
+        for _, old_r, row_obj in rows:
+            for idx, c in enumerate(side_cols):
+                cell=row_obj[idx]
+                upsert_workbook_cell_cur(
+                    cur, sheet,target_r,c,
+                    cell["value"],cell["bg_color"],cell["text_color"],cell["link_path"],cell["link_label"],
+                    cell["font_size"],cell["bold"],cell["rich_html"],user
+                )
+            target_r += 1
+
+        con.commit()
+    finally:
+        con.close()
+
 
 def email_body(sheet):
     d=cells_for(sheet); lines=[]
@@ -952,7 +982,7 @@ def reveal_file(path):
 
 def cloud_notice_banner():
     if os.environ.get("RENDER"):
-        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Ticket Attachment Preview: old database columns are upgraded automatically on startup.</div>"
+        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Postgres Bulk Save Fix: old database columns are upgraded automatically on startup.</div>"
     return ""
 
 
@@ -2645,7 +2675,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v32 Ticket Attachment Preview')
+    print('PMW Ticket + Fabrication APP v34 Postgres Bulk Save Fix')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
