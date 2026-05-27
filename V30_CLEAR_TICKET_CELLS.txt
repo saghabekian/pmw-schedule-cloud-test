@@ -1,0 +1,12 @@
+PMW Render v30 Clear Ticket Cells
+
+Built from v29 Cloud Ticket Uploads.
+
+Fixes:
+- If you delete the visible text in a cell, the hidden ticket/email link clears too.
+- Added "Clear Cell + Link" button.
+- Clearing removes the envelope/mail icon, link path, colors, font, and rich text.
+
+Important iPhone note:
+Outlook .msg files do not preview nicely on iPhone Safari. Downloading works, but iPhone may not open .msg directly.
+Later we can add an HTML/PDF email preview so phones can read ticket emails without Outlook.

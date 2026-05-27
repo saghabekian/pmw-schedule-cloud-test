@@ -14,7 +14,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v29 Cloud Ticket Uploads"
+APP_VERSION = "v30 Clear Ticket Cells"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -608,6 +608,13 @@ def save_posted_cells(sheet):
             key=f"cell_{r}_{c}"
             if key in request.form:
                 val=(request.form.get(key) or '').replace('\r',' ').replace('\n',' ').strip()
+
+                # V30: if the user deletes the visible cell text, clear the whole cell object,
+                # including hidden ticket/email link, envelope icon, colors, font settings, and rich text.
+                if val == '':
+                    upsert_workbook_cell(sheet,r,c,'','','','','','','','',session.get('username',''))
+                    continue
+
                 bg=(request.form.get(f"bg_{r}_{c}") or '').strip()
                 txt=(request.form.get(f"txt_{r}_{c}") or '').strip()
                 link=(request.form.get(f"link_{r}_{c}") or '').strip()
@@ -938,7 +945,7 @@ def reveal_file(path):
 
 def cloud_notice_banner():
     if os.environ.get("RENDER"):
-        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Cloud Ticket Uploads: old database columns are upgraded automatically on startup.</div>"
+        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Clear Ticket Cells: old database columns are upgraded automatically on startup.</div>"
     return ""
 
 
@@ -1223,12 +1230,12 @@ def index():
 <b>Size:</b>
 <select onchange="setFontSize(this.value); this.selectedIndex=0"><option value=''>Size</option><option value='10'>10</option><option value='11'>11</option><option value='12'>12</option><option value='14'>14</option><option value='16'>16</option><option value='18'>18</option><option value='20'>20</option></select>
 <button type='button' onclick="toggleBold()"><b>B</b></button>
-<button type='button' onclick="openRichTextEditor()">Edit selected words</button>
+<button type='button' onclick="openRichTextEditor()">Edit selected words</button><button type='button' onclick="clearSelectedCells()">Clear Cell + Link</button>
 <span class='small'>Drag across cells or Ctrl+click to format many cells.</span>
 </div>"""
     body=f"<div class='toolbar'><b>Excel-style workbook</b><span class='small'>{note}</span>{color_html}<span class='grow'></span>{import_html}</div><div class='tabs'>{tabs}</div><div id='saveStatus' style='position:fixed;right:8px;top:48px;z-index:2000;background:#fff3cd;border:1px solid #d6b656;padding:3px 8px;font-size:12px;display:none'>Saved</div>"
     if editable:
-        body += "<div class='mobileTop'><button type='button' class='red' onclick=\"setCellColor('#ff6666')\">Red</button><button type='button' class='yellow' onclick=\"setCellColor('#fff066')\">Yellow</button><button type='button' class='green' onclick=\"setCellColor('#93d050')\">Green</button><button type='button' class='blue' onclick=\"setCellColor('#9dc3e6')\">Blue</button><button type='button' class='white' onclick=\"setCellColor('#ffffff')\">White</button><button type='button' onclick=\"setCellColor('')\">Clear</button><button type='button' onclick=\"toggleBold()\"><b>B</b></button><button type='button' onclick=\"openRichTextEditor()\">Words</button><button type='button' onclick=\"mobileZoomOut()\">Zoom -</button><button type='button' onclick=\"mobileZoomIn()\">Zoom +</button><span class='mobileZoomLabel' id='mobileZoomLabel'>100%</span></div>"
+        body += "<div class='mobileTop'><button type='button' class='red' onclick=\"setCellColor('#ff6666')\">Red</button><button type='button' class='yellow' onclick=\"setCellColor('#fff066')\">Yellow</button><button type='button' class='green' onclick=\"setCellColor('#93d050')\">Green</button><button type='button' class='blue' onclick=\"setCellColor('#9dc3e6')\">Blue</button><button type='button' class='white' onclick=\"setCellColor('#ffffff')\">White</button><button type='button' onclick=\"setCellColor('')\">Clear</button><button type='button' onclick=\"toggleBold()\"><b>B</b></button><button type='button' onclick=\"openRichTextEditor()\">Words</button><button type='button' onclick=\"clearSelectedCells()\">Clear</button><button type='button' onclick=\"mobileZoomOut()\">Zoom -</button><button type='button' onclick=\"mobileZoomIn()\">Zoom +</button><span class='mobileZoomLabel' id='mobileZoomLabel'>100%</span></div>"
     body += "<div class='workspace'>"
     if editable: body += f"<form id='sheetForm' method='post' action='/save_command'><input type='hidden' name='sheet' value='{html.escape(active)}'>"
     body += "<div class='sheetline'><div class='sheetwrap'><table class='sheet'><col class='num'><col class='job'><col class='note'><col class='num'><col class='job'><col class='note'>"
@@ -1692,6 +1699,40 @@ document.addEventListener('keydown', function(e){
     e.stopPropagation();
   }
 }, true);
+
+/* ===== V30 CLEAR CELL + TICKET LINK ===== */
+function clearSelectedCells(){
+  const cells = (typeof selectedInputs === 'function') ? selectedInputs() : (window.activeCell ? [window.activeCell] : []);
+  if(!cells || cells.length===0){ alert('Click a cell first.'); return; }
+  cells.forEach(el=>{
+    const r=el.dataset.row, c=el.dataset.col;
+    if(el.classList && el.classList.contains('richCell')){
+      el.innerHTML='';
+    }else{
+      el.value='';
+    }
+    const plain=document.querySelector(`input[name="cell_${r}_${c}"]`);
+    if(plain) plain.value='';
+    ['bg','txt','link','label','fsize','bold','rich'].forEach(prefix=>{
+      const h=document.querySelector(`input[name="${prefix}_${r}_${c}"]`);
+      if(h) h.value='';
+    });
+    el.style.backgroundColor='';
+    el.style.color='';
+    el.style.fontSize='';
+    el.style.fontWeight='';
+    const td=el.closest('td');
+    if(td){
+      td.style.backgroundColor='';
+      td.style.color='';
+      td.style.fontSize='';
+      td.style.fontWeight='';
+      const linkBtn=td.querySelector('.linkbtn');
+      if(linkBtn) linkBtn.remove();
+    }
+    try{ if(typeof autosaveCell === 'function') autosaveCell(el); }catch(e){}
+  });
+}
 </script>
 </form>"""
     body += "</div>"
@@ -1971,6 +2012,27 @@ def ticket_link_info(ticket_id):
     <p><a class='btn' href='/tickets'>Back to Tickets</a></p>
     """
     return page(body)
+
+
+
+@app.route('/clear_cell', methods=['POST'])
+@login_required
+@role_required('editor')
+def clear_cell():
+    sheet = request.form.get('sheet') or 'Fabrication Schedule'
+    try:
+        r = int(request.form.get('row'))
+        c = int(request.form.get('col'))
+    except Exception:
+        flash('Bad cell.')
+        return redirect('/?sheet='+urllib.parse.quote(sheet))
+    if c not in DISPLAY_COLS:
+        flash('Bad cell.')
+        return redirect('/?sheet='+urllib.parse.quote(sheet))
+    upsert_workbook_cell(sheet,r,c,'','','','','','','','',session.get('username',''))
+    log('CLEAR_CELL', f'{sheet} R{r} C{c}')
+    flash('Cell cleared, including ticket/email link.')
+    return redirect('/?sheet='+urllib.parse.quote(sheet))
 
 
 @app.route('/tickets')
@@ -2307,7 +2369,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v29 Cloud Ticket Uploads')
+    print('PMW Ticket + Fabrication APP v30 Clear Ticket Cells')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
