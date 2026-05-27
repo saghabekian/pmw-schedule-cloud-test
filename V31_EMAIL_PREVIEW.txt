@@ -1,0 +1,13 @@
+PMW Render v31 Email Preview
+
+Built from v30.
+
+Adds browser email preview:
+- Upload .msg as before.
+- App extracts subject, sender, date, and body text.
+- Tickets page shows View Email.
+- Schedule envelope link opens the browser preview instead of only downloading .msg.
+- Original .msg download is still available.
+
+Note:
+Some Outlook .msg files may not parse perfectly. If preview fails, the app still keeps the original .msg download.

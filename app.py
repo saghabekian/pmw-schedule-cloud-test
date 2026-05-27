@@ -6,6 +6,11 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from openpyxl import load_workbook
 try:
+    import extract_msg
+except Exception:
+    extract_msg = None
+
+try:
     import psycopg
     from psycopg.rows import dict_row
 except Exception:
@@ -14,7 +19,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v30 Clear Ticket Cells"
+APP_VERSION = "v31 Email Preview"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -545,7 +550,7 @@ def add_ticket_to_schedule(ticket_id, side, sheet="Fabrication Schedule"):
         cloud_file = t['cloud_file'] or ''
     except Exception:
         cloud_file = ''
-    path = ("/ticket_download/" + str(ticket_id)) if cloud_file.strip() else (t["file_path"] or "")
+    path = ("/ticket_view_email/" + str(ticket_id)) if cloud_file.strip() else (t["file_path"] or "")
     label = (t["subject"] or t["job_number"] or "Ticket")[:80]
 
     for c, val in [(job_col, text), (note_col, "TICKET")]:
@@ -945,7 +950,7 @@ def reveal_file(path):
 
 def cloud_notice_banner():
     if os.environ.get("RENDER"):
-        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Clear Ticket Cells: old database columns are upgraded automatically on startup.</div>"
+        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Email Preview: old database columns are upgraded automatically on startup.</div>"
     return ""
 
 
@@ -1955,16 +1960,70 @@ def ticket_upload(ticket_id):
     save_path = os.path.join(CLOUD_TICKET_FOLDER, safe_name)
     f.save(save_path)
 
+    preview = parse_msg_preview(save_path)
+
     con=db()
     con.execute("""UPDATE ticket_links
-                   SET cloud_file=?, cloud_filename=?, cloud_uploaded_at=?, cloud_uploaded_by=?
+                   SET cloud_file=?, cloud_filename=?, cloud_uploaded_at=?, cloud_uploaded_by=?,
+                       preview_subject=?, preview_sender=?, preview_date=?, preview_body=?, preview_status=?
                    WHERE id=?""",
-                (safe_name, original, datetime.now().isoformat(timespec='seconds'), session.get('username',''), ticket_id))
+                (safe_name, original, datetime.now().isoformat(timespec='seconds'), session.get('username',''),
+                 preview.get('subject',''), preview.get('sender',''), preview.get('date',''), preview.get('body',''), preview.get('status',''), ticket_id))
     con.commit(); con.close()
 
     log('UPLOAD_TICKET_MSG', f'{ticket_id} / {original}')
     flash('Cloud ticket email uploaded. Users can now download/open it from the cloud link.')
     return redirect('/tickets')
+
+
+@app.route('/ticket_view_email/<int:ticket_id>')
+@login_required
+def ticket_view_email(ticket_id):
+    con=db()
+    t=con.execute("SELECT * FROM ticket_links WHERE id=?",(ticket_id,)).fetchone()
+    con.close()
+    if not t:
+        flash('Ticket not found.')
+        return redirect('/tickets')
+
+    def getv(k):
+        try:
+            return t[k] or ''
+        except Exception:
+            return ''
+
+    subject = getv('preview_subject') or getv('subject')
+    sender = getv('preview_sender') or getv('sender')
+    date = getv('preview_date') or getv('received')
+    body_text = getv('preview_body')
+    status = getv('preview_status')
+    cloud_file = getv('cloud_file')
+
+    if not body_text:
+        body_text = "No browser preview has been created yet. Upload or re-upload the .msg file from the Tickets page."
+
+    body_html = html.escape(body_text).replace('\\n','<br>')
+    subject_html = html.escape(subject)
+    sender_html = html.escape(sender)
+    date_html = html.escape(date)
+    status_html = html.escape(status)
+
+    download = f"<a class='btn green' href='/ticket_download/{ticket_id}'>Download Original .msg</a>" if cloud_file else ""
+    page_body = f"""
+    <h2>Email Preview</h2>
+    <div style='background:white;border:1px solid #bbb;padding:14px;margin:10px 0'>
+      <p><b>Subject:</b> {subject_html}</p>
+      <p><b>From:</b> {sender_html}</p>
+      <p><b>Date:</b> {date_html}</p>
+      <p><b>Preview Status:</b> {status_html}</p>
+      <p>{download} <a class='btn' href='/tickets'>Back to Tickets</a></p>
+    </div>
+    <div style='background:white;border:1px solid #bbb;padding:18px;font-size:16px;line-height:1.45;white-space:normal'>
+      {body_html}
+    </div>
+    """
+    return page(page_body)
+
 
 @app.route('/ticket_download/<int:ticket_id>')
 @login_required
@@ -2000,7 +2059,7 @@ def ticket_link_info(ticket_id):
     job=html.escape(t['job_number'] or '')
     local_path=html.escape(t['file_path'] or '')
     cloud_file=(t.get('cloud_file') if hasattr(t, 'get') else t['cloud_file']) or ''
-    cloud_status = f"<p><a class='btn green' href='/ticket_download/{ticket_id}'>Download Cloud .msg</a></p>" if cloud_file else "<p><b>No cloud .msg uploaded yet.</b></p>"
+    cloud_status = f"<p><a class='btn green' href='/ticket_view_email/{ticket_id}'>View Email in Browser</a> <a class='btn' href='/ticket_download/{ticket_id}'>Download Original .msg</a></p>" if cloud_file else "<p><b>No cloud .msg uploaded yet.</b></p>"
     body=f"""
     <h2>Ticket Email Link</h2>
     <p><b>Job:</b> {job}</p>
@@ -2055,7 +2114,7 @@ def tickets():
         except Exception:
             cloud_file = ''
         if cloud_file:
-            openlink = "<a class='btn green' href='/ticket_download/"+str(r['id'])+"'>Download .msg</a> <a class='btn' href='/ticket_link_info/"+str(r['id'])+"'>Info</a>"
+            openlink = "<a class='btn green' href='/ticket_view_email/"+str(r['id'])+"'>View Email</a> <a class='btn' href='/ticket_download/"+str(r['id'])+"'>Download .msg</a> <a class='btn' href='/ticket_link_info/"+str(r['id'])+"'>Info</a>"
         else:
             openlink = "<a class='btn' href='/ticket_link_info/"+str(r['id'])+"'>Office Path</a>"
         uploadform = "<form method='post' action='/ticket_upload/"+str(r['id'])+"' enctype='multipart/form-data' style='display:flex;gap:4px;align-items:center'><input type='file' name='msgfile' accept='.msg' style='max-width:190px'><button>Upload .msg</button></form>"
@@ -2310,6 +2369,60 @@ def audit():
 
 
 
+
+def upgrade_ticket_preview_columns():
+    try:
+        con=db(); cur=con.cursor()
+        for coldef in [
+            "preview_subject TEXT DEFAULT ''",
+            "preview_sender TEXT DEFAULT ''",
+            "preview_date TEXT DEFAULT ''",
+            "preview_body TEXT DEFAULT ''",
+            "preview_status TEXT DEFAULT ''"
+        ]:
+            try:
+                cur.execute("ALTER TABLE ticket_links ADD COLUMN " + coldef)
+            except Exception:
+                try:
+                    con.con.rollback()
+                except Exception:
+                    pass
+        con.commit(); con.close()
+    except Exception as e:
+        print("Ticket preview column upgrade failed:", repr(e))
+
+def parse_msg_preview(msg_path):
+    if extract_msg is None:
+        return {
+            "subject": "",
+            "sender": "",
+            "date": "",
+            "body": "Email preview library is not available on this server yet. You can still download the original .msg file.",
+            "status": "extract_msg not installed"
+        }
+    try:
+        msg = extract_msg.Message(msg_path)
+        subject = msg.subject or ""
+        sender = msg.sender or ""
+        date = str(msg.date or "")
+        body = msg.body or ""
+        if not body.strip():
+            body = "No readable body text was found in this .msg file. Download the original .msg file to open in Outlook."
+        try:
+            msg.close()
+        except Exception:
+            pass
+        return {"subject": subject, "sender": sender, "date": date, "body": body, "status": "ok"}
+    except Exception as e:
+        return {
+            "subject": "",
+            "sender": "",
+            "date": "",
+            "body": "Could not parse this .msg file for browser preview. Download the original .msg file to open in Outlook. Error: " + str(e),
+            "status": "parse failed"
+        }
+
+
 def upgrade_ticket_cloud_columns():
     try:
         con=db(); cur=con.cursor()
@@ -2336,6 +2449,7 @@ def startup_init_for_cloud():
         print("PMW DB MODE:", "PostgreSQL" if USE_POSTGRES else "SQLite", "DATABASE_URL set:", bool(DATABASE_URL), "psycopg:", bool(psycopg))
         init_db()
         upgrade_ticket_cloud_columns()
+        upgrade_ticket_preview_columns()
 
         con=db()
         try:
@@ -2369,7 +2483,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v30 Clear Ticket Cells')
+    print('PMW Ticket + Fabrication APP v31 Email Preview')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
