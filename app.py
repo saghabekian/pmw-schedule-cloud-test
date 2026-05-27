@@ -1,4 +1,4 @@
-import os, sqlite3, html, urllib.parse, subprocess, platform
+import os, sqlite3, html, urllib.parse, subprocess, platform, mimetypes
 from datetime import datetime
 from functools import wraps
 from flask import Flask, request, redirect, url_for, session, render_template_string, flash, jsonify, send_from_directory
@@ -19,7 +19,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v31 Email Preview"
+APP_VERSION = "v32 Ticket Attachment Preview"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -28,6 +28,8 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(EXPORT_FOLDER, exist_ok=True)
 CLOUD_TICKET_FOLDER = os.path.join(APP_DIR, 'cloud_ticket_files')
 os.makedirs(CLOUD_TICKET_FOLDER, exist_ok=True)
+CLOUD_ATTACHMENT_FOLDER = os.path.join(APP_DIR, 'cloud_ticket_attachments')
+os.makedirs(CLOUD_ATTACHMENT_FOLDER, exist_ok=True)
 
 DISPLAY_COLS = [1,2,3,4,5,6]
 ROLE_LEVEL = {"viewer":1,"editor":2,"admin":3}
@@ -950,7 +952,7 @@ def reveal_file(path):
 
 def cloud_notice_banner():
     if os.environ.get("RENDER"):
-        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Email Preview: old database columns are upgraded automatically on startup.</div>"
+        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Ticket Attachment Preview: old database columns are upgraded automatically on startup.</div>"
     return ""
 
 
@@ -1962,6 +1964,22 @@ def ticket_upload(ticket_id):
 
     preview = parse_msg_preview(save_path)
 
+    # Replace attachment records for this ticket when the .msg is re-uploaded
+    con=db()
+    old_atts=con.execute("SELECT stored_filename FROM ticket_attachments WHERE ticket_id=?",(ticket_id,)).fetchall() if True else []
+    for a in old_atts:
+        try:
+            old_file = a['stored_filename']
+            old_path = os.path.join(CLOUD_ATTACHMENT_FOLDER, old_file)
+            if os.path.exists(old_path):
+                os.remove(old_path)
+        except Exception:
+            pass
+    con.execute("DELETE FROM ticket_attachments WHERE ticket_id=?",(ticket_id,))
+    con.commit(); con.close()
+
+    extracted = extract_msg_attachments(ticket_id, save_path)
+
     con=db()
     con.execute("""UPDATE ticket_links
                    SET cloud_file=?, cloud_filename=?, cloud_uploaded_at=?, cloud_uploaded_by=?,
@@ -1976,11 +1994,46 @@ def ticket_upload(ticket_id):
     return redirect('/tickets')
 
 
+
+@app.route('/ticket_attachment/<int:attachment_id>')
+@login_required
+def ticket_attachment(attachment_id):
+    from flask import send_file
+    con=db()
+    a=con.execute("SELECT * FROM ticket_attachments WHERE id=?",(attachment_id,)).fetchone()
+    con.close()
+    if not a:
+        flash('Attachment not found.')
+        return redirect('/tickets')
+    path=os.path.join(CLOUD_ATTACHMENT_FOLDER, a['stored_filename'])
+    if not os.path.exists(path):
+        flash('Attachment file is missing from storage.')
+        return redirect('/tickets')
+    return send_file(path, as_attachment=False, download_name=a['original_filename'], mimetype=a['content_type'] or None)
+
+@app.route('/ticket_attachment_download/<int:attachment_id>')
+@login_required
+def ticket_attachment_download(attachment_id):
+    from flask import send_file
+    con=db()
+    a=con.execute("SELECT * FROM ticket_attachments WHERE id=?",(attachment_id,)).fetchone()
+    con.close()
+    if not a:
+        flash('Attachment not found.')
+        return redirect('/tickets')
+    path=os.path.join(CLOUD_ATTACHMENT_FOLDER, a['stored_filename'])
+    if not os.path.exists(path):
+        flash('Attachment file is missing from storage.')
+        return redirect('/tickets')
+    return send_file(path, as_attachment=True, download_name=a['original_filename'], mimetype=a['content_type'] or None)
+
+
 @app.route('/ticket_view_email/<int:ticket_id>')
 @login_required
 def ticket_view_email(ticket_id):
     con=db()
     t=con.execute("SELECT * FROM ticket_links WHERE id=?",(ticket_id,)).fetchone()
+    atts=con.execute("SELECT * FROM ticket_attachments WHERE ticket_id=? ORDER BY id",(ticket_id,)).fetchall()
     con.close()
     if not t:
         flash('Ticket not found.')
@@ -2008,9 +2061,28 @@ def ticket_view_email(ticket_id):
     date_html = html.escape(date)
     status_html = html.escape(status)
 
+    attachments_html = "<h3>Attachments</h3>"
+    if not atts:
+        attachments_html += "<p>No attachments were extracted from this email.</p>"
+    else:
+        for a in atts:
+            aid=a['id']
+            fname=html.escape(a['original_filename'] or 'attachment')
+            ctype=(a['content_type'] or '').lower()
+            view_url=f"/ticket_attachment/{aid}"
+            dl_url=f"/ticket_attachment_download/{aid}"
+            attachments_html += f"<div style='background:white;border:1px solid #bbb;padding:12px;margin:10px 0'><b>{fname}</b><br><a class='btn green' href='{view_url}' target='_blank'>Open/Preview</a> <a class='btn' href='{dl_url}'>Download</a>"
+            if ctype.startswith('image/'):
+                attachments_html += f"<div><img src='{view_url}' style='max-width:100%;height:auto;border:1px solid #ccc;margin-top:8px'></div>"
+            elif ctype == 'application/pdf':
+                attachments_html += f"<div style='margin-top:8px'><iframe src='{view_url}' style='width:100%;height:650px;border:1px solid #ccc'></iframe></div>"
+            else:
+                attachments_html += "<p class='small'>Preview may not be available for this file type. Use Download.</p>"
+            attachments_html += "</div>"
+
     download = f"<a class='btn green' href='/ticket_download/{ticket_id}'>Download Original .msg</a>" if cloud_file else ""
     page_body = f"""
-    <h2>Email Preview</h2>
+    <h2>Ticket Email + Attachments</h2>
     <div style='background:white;border:1px solid #bbb;padding:14px;margin:10px 0'>
       <p><b>Subject:</b> {subject_html}</p>
       <p><b>From:</b> {sender_html}</p>
@@ -2018,6 +2090,10 @@ def ticket_view_email(ticket_id):
       <p><b>Preview Status:</b> {status_html}</p>
       <p>{download} <a class='btn' href='/tickets'>Back to Tickets</a></p>
     </div>
+    <div style='background:#f7f7f7;border:1px solid #bbb;padding:12px;margin:10px 0'>
+      {attachments_html}
+    </div>
+    <h3>Email Body</h3>
     <div style='background:white;border:1px solid #bbb;padding:18px;font-size:16px;line-height:1.45;white-space:normal'>
       {body_html}
     </div>
@@ -2370,6 +2446,91 @@ def audit():
 
 
 
+
+def upgrade_ticket_attachment_tables():
+    try:
+        con=db(); cur=con.cursor()
+        if USE_POSTGRES:
+            cur.execute("""CREATE TABLE IF NOT EXISTS ticket_attachments(
+                id SERIAL PRIMARY KEY,
+                ticket_id INTEGER,
+                original_filename TEXT,
+                stored_filename TEXT,
+                content_type TEXT,
+                size_bytes INTEGER DEFAULT 0,
+                uploaded_at TEXT,
+                uploaded_by TEXT
+            )""")
+        else:
+            cur.execute("""CREATE TABLE IF NOT EXISTS ticket_attachments(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticket_id INTEGER,
+                original_filename TEXT,
+                stored_filename TEXT,
+                content_type TEXT,
+                size_bytes INTEGER DEFAULT 0,
+                uploaded_at TEXT,
+                uploaded_by TEXT
+            )""")
+        con.commit(); con.close()
+    except Exception as e:
+        print("Ticket attachment table upgrade failed:", repr(e))
+
+def save_ticket_attachment_record(ticket_id, original, stored, content_type, size_bytes):
+    con=db()
+    con.execute("""INSERT INTO ticket_attachments(ticket_id,original_filename,stored_filename,content_type,size_bytes,uploaded_at,uploaded_by)
+                   VALUES(?,?,?,?,?,?,?)""",
+                (ticket_id, original, stored, content_type, int(size_bytes or 0), datetime.now().isoformat(timespec='seconds'), session.get('username','')))
+    con.commit(); con.close()
+
+def extract_msg_attachments(ticket_id, msg_path):
+    """Extract attachments from .msg into cloud_ticket_attachments folder."""
+    saved = []
+    if extract_msg is None:
+        return saved
+    try:
+        msg = extract_msg.Message(msg_path)
+        attachments = getattr(msg, 'attachments', []) or []
+        for idx, att in enumerate(attachments, start=1):
+            try:
+                raw_name = getattr(att, 'longFilename', None) or getattr(att, 'shortFilename', None) or f"attachment_{idx}"
+                original = secure_filename(raw_name) or f"attachment_{idx}"
+                stored = f"ticket_{ticket_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{idx}_{original}"
+                path = os.path.join(CLOUD_ATTACHMENT_FOLDER, stored)
+
+                data = None
+                if hasattr(att, 'data'):
+                    data = att.data
+                if data:
+                    with open(path, 'wb') as f:
+                        f.write(data)
+                else:
+                    # fallback: extract-msg attachment object can save itself
+                    try:
+                        att.save(customPath=CLOUD_ATTACHMENT_FOLDER, customFilename=stored)
+                    except TypeError:
+                        att.save(customPath=CLOUD_ATTACHMENT_FOLDER)
+                        # If saved with original name, rename if possible
+                        possible = os.path.join(CLOUD_ATTACHMENT_FOLDER, original)
+                        if os.path.exists(possible):
+                            os.replace(possible, path)
+
+                if os.path.exists(path):
+                    ctype = mimetypes.guess_type(original)[0] or 'application/octet-stream'
+                    size = os.path.getsize(path)
+                    save_ticket_attachment_record(ticket_id, original, stored, ctype, size)
+                    saved.append({"filename": original, "stored": stored, "content_type": ctype, "size": size})
+            except Exception as e:
+                print("Attachment extract failed:", repr(e))
+        try:
+            msg.close()
+        except Exception:
+            pass
+    except Exception as e:
+        print("Extract attachments failed:", repr(e))
+    return saved
+
+
 def upgrade_ticket_preview_columns():
     try:
         con=db(); cur=con.cursor()
@@ -2450,6 +2611,7 @@ def startup_init_for_cloud():
         init_db()
         upgrade_ticket_cloud_columns()
         upgrade_ticket_preview_columns()
+        upgrade_ticket_attachment_tables()
 
         con=db()
         try:
@@ -2483,7 +2645,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v31 Email Preview')
+    print('PMW Ticket + Fabrication APP v32 Ticket Attachment Preview')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)

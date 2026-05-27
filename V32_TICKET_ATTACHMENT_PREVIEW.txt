@@ -1,0 +1,13 @@
+PMW Render v32 Ticket Attachment Preview
+
+Built from v31.
+
+Adds attachment extraction from uploaded .msg files:
+- Extracts email attachments into cloud storage
+- Shows attachment list on View Email page
+- PDF attachments preview in browser iframe
+- JPG/PNG images show inline
+- Other files can be downloaded
+- Original .msg download remains available
+
+No Outlook macro changes required.
