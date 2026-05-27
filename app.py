@@ -14,13 +14,15 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v28 Postgres Persistence Only"
+APP_VERSION = "v29 Cloud Ticket Uploads"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
 EXPORT_FOLDER = os.path.join(APP_DIR, "exports")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(EXPORT_FOLDER, exist_ok=True)
+CLOUD_TICKET_FOLDER = os.path.join(APP_DIR, 'cloud_ticket_files')
+os.makedirs(CLOUD_TICKET_FOLDER, exist_ok=True)
 
 DISPLAY_COLS = [1,2,3,4,5,6]
 ROLE_LEVEL = {"viewer":1,"editor":2,"admin":3}
@@ -538,7 +540,12 @@ def add_ticket_to_schedule(ticket_id, side, sheet="Fabrication Schedule"):
     r = first_empty_schedule_row(sheet, job_col)
     text = (t["subject"] or t["job_number"] or "Ticket").strip()
     now=datetime.now().isoformat(timespec='seconds')
-    path = t["file_path"] or ""
+    cloud_file = ''
+    try:
+        cloud_file = t['cloud_file'] or ''
+    except Exception:
+        cloud_file = ''
+    path = ("/ticket_download/" + str(ticket_id)) if cloud_file.strip() else (t["file_path"] or "")
     label = (t["subject"] or t["job_number"] or "Ticket")[:80]
 
     for c, val in [(job_col, text), (note_col, "TICKET")]:
@@ -931,7 +938,7 @@ def reveal_file(path):
 
 def cloud_notice_banner():
     if os.environ.get("RENDER"):
-        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Postgres Persistence Only: old database columns are upgraded automatically on startup.</div>"
+        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Cloud Ticket Uploads: old database columns are upgraded automatically on startup.</div>"
     return ""
 
 
@@ -1881,6 +1888,91 @@ def import_one_ticket_route():
         flash(f'Newest ticket import failed: {e}')
     return redirect('/')
 
+
+@app.route('/ticket_upload/<int:ticket_id>', methods=['POST'])
+@login_required
+@role_required('editor')
+def ticket_upload(ticket_id):
+    f = request.files.get('msgfile')
+    if not f or not f.filename:
+        flash('Choose a .msg file first.')
+        return redirect('/tickets')
+
+    original = secure_filename(f.filename)
+    if not original.lower().endswith('.msg'):
+        flash('Please upload the saved Outlook .msg file only.')
+        return redirect('/tickets')
+
+    con=db()
+    t=con.execute("SELECT id,job_number,subject FROM ticket_links WHERE id=?",(ticket_id,)).fetchone()
+    con.close()
+    if not t:
+        flash('Ticket not found.')
+        return redirect('/tickets')
+
+    safe_name = f"ticket_{ticket_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{original}"
+    save_path = os.path.join(CLOUD_TICKET_FOLDER, safe_name)
+    f.save(save_path)
+
+    con=db()
+    con.execute("""UPDATE ticket_links
+                   SET cloud_file=?, cloud_filename=?, cloud_uploaded_at=?, cloud_uploaded_by=?
+                   WHERE id=?""",
+                (safe_name, original, datetime.now().isoformat(timespec='seconds'), session.get('username',''), ticket_id))
+    con.commit(); con.close()
+
+    log('UPLOAD_TICKET_MSG', f'{ticket_id} / {original}')
+    flash('Cloud ticket email uploaded. Users can now download/open it from the cloud link.')
+    return redirect('/tickets')
+
+@app.route('/ticket_download/<int:ticket_id>')
+@login_required
+def ticket_download(ticket_id):
+    from flask import send_file
+    con=db()
+    t=con.execute("SELECT cloud_file,cloud_filename,file_path,subject FROM ticket_links WHERE id=?",(ticket_id,)).fetchone()
+    con.close()
+    if not t:
+        flash('Ticket not found.')
+        return redirect('/tickets')
+    cloud_file = (t.get('cloud_file') if hasattr(t, 'get') else t['cloud_file']) or ''
+    cloud_filename = (t.get('cloud_filename') if hasattr(t, 'get') else t['cloud_filename']) or ''
+    if not cloud_file:
+        flash('No cloud .msg file has been uploaded for this ticket yet.')
+        return redirect('/tickets')
+    full_path = os.path.join(CLOUD_TICKET_FOLDER, cloud_file)
+    if not os.path.exists(full_path):
+        flash('Cloud file is missing from storage.')
+        return redirect('/tickets')
+    return send_file(full_path, as_attachment=True, download_name=cloud_filename or cloud_file)
+
+@app.route('/ticket_link_info/<int:ticket_id>')
+@login_required
+def ticket_link_info(ticket_id):
+    con=db()
+    t=con.execute("SELECT * FROM ticket_links WHERE id=?",(ticket_id,)).fetchone()
+    con.close()
+    if not t:
+        flash('Ticket not found.')
+        return redirect('/tickets')
+    subject=html.escape(t['subject'] or '')
+    job=html.escape(t['job_number'] or '')
+    local_path=html.escape(t['file_path'] or '')
+    cloud_file=(t.get('cloud_file') if hasattr(t, 'get') else t['cloud_file']) or ''
+    cloud_status = f"<p><a class='btn green' href='/ticket_download/{ticket_id}'>Download Cloud .msg</a></p>" if cloud_file else "<p><b>No cloud .msg uploaded yet.</b></p>"
+    body=f"""
+    <h2>Ticket Email Link</h2>
+    <p><b>Job:</b> {job}</p>
+    <p><b>Subject:</b> {subject}</p>
+    {cloud_status}
+    <h3>Original Office Path</h3>
+    <p class='small'>This is the old office/server path from your ticket drop workbook.</p>
+    <input value="{local_path}" style="width:90%;padding:10px" onclick="this.select()">
+    <p><a class='btn' href='/tickets'>Back to Tickets</a></p>
+    """
+    return page(body)
+
+
 @app.route('/tickets')
 @login_required
 def tickets():
@@ -1893,11 +1985,20 @@ def tickets():
         rows=con.execute("SELECT * FROM ticket_links ORDER BY id DESC LIMIT 200").fetchall()
     con.close()
     body="<div class='toolbar'><b>Imported Tickets</b><form style='display:inline-flex;gap:5px;margin-left:10px'><input name='q' value='"+html.escape(q, quote=True)+"' placeholder='Search job, subject, sender'><button>Search</button></form><span class='small'>Use Add to Numbering/Fabrication to place a linked ticket on the schedule.</span></div>"
-    body+="<table class='admin'><tr><th>Received</th><th>Job</th><th>Subject</th><th>Sender</th><th>Open</th><th>Add to Schedule</th></tr>"
+    body+="<table class='admin'><tr><th>Received</th><th>Job</th><th>Subject</th><th>Sender</th><th>Email Link</th><th>Cloud Upload</th><th>Add to Schedule</th></tr>"
     for r in rows:
-        openlink = "<a class='btn' href='/open_ticket_id?id="+str(r['id'])+"'>Open Email</a>"
+        cloud_file = ''
+        try:
+            cloud_file = r['cloud_file'] or ''
+        except Exception:
+            cloud_file = ''
+        if cloud_file:
+            openlink = "<a class='btn green' href='/ticket_download/"+str(r['id'])+"'>Download .msg</a> <a class='btn' href='/ticket_link_info/"+str(r['id'])+"'>Info</a>"
+        else:
+            openlink = "<a class='btn' href='/ticket_link_info/"+str(r['id'])+"'>Office Path</a>"
+        uploadform = "<form method='post' action='/ticket_upload/"+str(r['id'])+"' enctype='multipart/form-data' style='display:flex;gap:4px;align-items:center'><input type='file' name='msgfile' accept='.msg' style='max-width:190px'><button>Upload .msg</button></form>"
         addlinks = "<a class='btn green' href='/add_ticket_to_schedule?id="+str(r['id'])+"&side=numbering'>Numbering</a> <a class='btn green' href='/add_ticket_to_schedule?id="+str(r['id'])+"&side=fabrication'>Fabrication</a>"
-        body += f"<tr><td>{html.escape(r['received'] or '')}</td><td>{html.escape(r['job_number'] or '')}</td><td>{html.escape(r['subject'] or '')}</td><td>{html.escape(r['sender'] or '')}</td><td>{openlink}</td><td>{addlinks}</td></tr>"
+        body += f"<tr><td>{html.escape(r['received'] or '')}</td><td>{html.escape(r['job_number'] or '')}</td><td>{html.escape(r['subject'] or '')}</td><td>{html.escape(r['sender'] or '')}</td><td>{openlink}</td><td>{uploadform}</td><td>{addlinks}</td></tr>"
     body+="</table>"
     return page(body)
 
@@ -1935,7 +2036,10 @@ def open_link():
     if not rec or not (rec['link_path'] or '').strip():
         flash('No ticket/email link is attached to that cell.')
         return redirect('/?sheet='+urllib.parse.quote(sheet))
-    ok,msg=open_path_on_this_pc(rec['link_path'])
+    link = rec['link_path'] or ''
+    if link.startswith('/'):
+        return redirect(link)
+    ok,msg=open_path_on_this_pc(link)
     flash('Opened linked ticket/email.' if ok else 'Could not open linked ticket/email. Reason: '+msg)
     return redirect('/?sheet='+urllib.parse.quote(sheet))
 
@@ -2143,10 +2247,33 @@ def audit():
     return page(body+'</table>')
 
 
+
+def upgrade_ticket_cloud_columns():
+    try:
+        con=db(); cur=con.cursor()
+        for coldef in [
+            "cloud_file TEXT DEFAULT ''",
+            "cloud_filename TEXT DEFAULT ''",
+            "cloud_uploaded_at TEXT DEFAULT ''",
+            "cloud_uploaded_by TEXT DEFAULT ''"
+        ]:
+            try:
+                cur.execute("ALTER TABLE ticket_links ADD COLUMN " + coldef)
+            except Exception:
+                try:
+                    con.con.rollback()
+                except Exception:
+                    pass
+        con.commit(); con.close()
+    except Exception as e:
+        print("Ticket cloud column upgrade failed:", repr(e))
+
+
 def startup_init_for_cloud():
     try:
         print("PMW DB MODE:", "PostgreSQL" if USE_POSTGRES else "SQLite", "DATABASE_URL set:", bool(DATABASE_URL), "psycopg:", bool(psycopg))
         init_db()
+        upgrade_ticket_cloud_columns()
 
         con=db()
         try:
@@ -2180,7 +2307,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v28 Postgres Persistence Only')
+    print('PMW Ticket + Fabrication APP v29 Cloud Ticket Uploads')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)

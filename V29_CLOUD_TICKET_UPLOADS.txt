@@ -1,0 +1,12 @@
+PMW Render v29 Cloud Ticket Uploads
+
+Built from stable v28 PostgreSQL persistent base.
+
+Adds manual cloud .msg upload:
+- Import Ticket Drop Excel like before.
+- Go to Tickets.
+- For any ticket, upload the matching Outlook .msg file.
+- Once uploaded, users can download the .msg from anywhere.
+- When that ticket is added to the schedule, the envelope link uses the cloud download route.
+
+No Outlook macro changes required yet.
