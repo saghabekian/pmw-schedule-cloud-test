@@ -1,0 +1,14 @@
+PMW Render v36 Mobile Portrait Scroll Fix
+
+Built from v35.
+
+Only changes mobile ticket/attachment preview:
+- Fixes iPhone portrait scrolling problem.
+- Keeps Open Full Screen button for PDFs.
+- Hides embedded PDF iframe on small phone screens so the page scrolls normally.
+- Desktop/browser view remains unchanged.
+
+Test:
+1. Open ticket attachment preview on iPhone in portrait.
+2. Confirm the page scrolls.
+3. Tap Open Full Screen for PDF viewing.

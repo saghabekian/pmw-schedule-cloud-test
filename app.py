@@ -19,7 +19,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v35 Mobile Attachment Preview"
+APP_VERSION = "v36 Mobile Portrait Scroll Fix"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -982,7 +982,7 @@ def reveal_file(path):
 
 def cloud_notice_banner():
     if os.environ.get("RENDER"):
-        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Mobile Attachment Preview: old database columns are upgraded automatically on startup.</div>"
+        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Mobile Portrait Scroll Fix: old database columns are upgraded automatically on startup.</div>"
     return ""
 
 
@@ -1306,6 +1306,44 @@ BASE = """
   }
   h2,h3{
     margin:10px 0;
+  }
+}
+
+
+/* ===== V36 IPHONE PORTRAIT SCROLL FIX ===== */
+.mobilePdfPortraitNotice{display:none}
+
+@media (max-width: 800px){
+  html, body{
+    height:auto !important;
+    min-height:100% !important;
+    overflow-y:auto !important;
+    overflow-x:hidden !important;
+    -webkit-overflow-scrolling:touch !important;
+    position:static !important;
+  }
+
+  .ticketPreviewWrap,
+  .ticketHeaderCard,
+  .ticketAttachmentArea,
+  .ticketAttachmentCard,
+  .ticketBodyCard{
+    overflow:visible !important;
+    max-height:none !important;
+  }
+
+  .ticketAttachmentFrame{
+    display:none !important;
+  }
+
+  .mobilePdfPortraitNotice{
+    display:block !important;
+    background:#fff3cd;
+    border:1px solid #d6b656;
+    padding:10px;
+    margin:8px 0;
+    font-size:14px;
+    line-height:1.35;
   }
 }
 
@@ -2199,7 +2237,7 @@ def ticket_view_email(ticket_id):
             if ctype.startswith('image/'):
                 attachments_html += f"<div><img src='{view_url}' class='ticketAttachmentImage'></div>"
             elif ctype == 'application/pdf':
-                attachments_html += f"<div class='mobileOpenHint'>On iPhone, tap <b>Open Full Screen</b> for easier PDF viewing and pinch zoom.</div><div style='margin-top:8px'><iframe src='{view_url}' class='ticketAttachmentFrame'></iframe></div>"
+                attachments_html += f"<div class='mobileOpenHint'>On iPhone, tap <b>Open Full Screen</b> for easier PDF viewing and pinch zoom.</div><div class='mobilePdfPortraitNotice'>PDF preview is hidden in iPhone portrait so the page can scroll normally. Tap <b>Open Full Screen</b> to view the PDF.</div><div style='margin-top:8px'><iframe src='{view_url}' class='ticketAttachmentFrame'></iframe></div>"
             else:
                 attachments_html += "<p class='small'>Preview may not be available for this file type. Use Download or Open Full Screen.</p>"
             attachments_html += "</div>"
@@ -2771,7 +2809,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v35 Mobile Attachment Preview')
+    print('PMW Ticket + Fabrication APP v36 Mobile Portrait Scroll Fix')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
