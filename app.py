@@ -20,7 +20,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v38 DB Stored Ticket Files"
+APP_VERSION = "v39 Auto Outlook Upload"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -106,6 +106,7 @@ auto_upgrade_sqlite_schema()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "pmw-local-dev-secret")
+PMW_UPLOAD_KEY = os.environ.get("PMW_UPLOAD_KEY", "pmw-upload-dev-key")
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 if DATABASE_URL.startswith("postgres://"):
@@ -983,7 +984,7 @@ def reveal_file(path):
 
 def cloud_notice_banner():
     if os.environ.get("RENDER"):
-        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 DB Stored Ticket Files: old database columns are upgraded automatically on startup.</div>"
+        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Auto Outlook Upload: old database columns are upgraded automatically on startup.</div>"
     return ""
 
 
@@ -1349,7 +1350,7 @@ BASE = """
 }
 
 </style></head><body>
-{% if session.get('user_id') %}<div class='top'><div class='brand'>{{app_name}} <span style='font-size:12px'>{{version}}</span></div><div class='nav'><span>{{session.username}} / {{session.role}}</span><a href='/'>Workbook</a><a href='/tickets'>Tickets</a>{% if can_admin %}<a href='/users'>Users</a><a href='/audit'>Audit</a>{% endif %}<a href='/logout'>Logout</a></div></div>{% endif %}
+{% if session.get('user_id') %}<div class='top'><div class='brand'>{{app_name}} <span style='font-size:12px'>{{version}}</span></div><div class='nav'><span>{{session.username}} / {{session.role}}</span><a href='/'>Workbook</a><a href='/tickets'>Tickets</a>{% if can_admin %}<a href='/users'>Users</a><a href='/admin/storage'>Storage</a><a href='/audit'>Audit</a>{% endif %}<a href='/logout'>Logout</a></div></div>{% endif %}
 {% for m in get_flashed_messages() %}<div class='flash'>{{m}}</div>{% endfor %}
 {{body|safe}}</body></html>
 """
@@ -2098,6 +2099,150 @@ def import_one_ticket_route():
     except Exception as e:
         flash(f'Newest ticket import failed: {e}')
     return redirect('/')
+
+
+
+def fmt_bytes(n):
+    try:
+        n = float(n or 0)
+    except Exception:
+        n = 0
+    units = ['B','KB','MB','GB','TB']
+    i = 0
+    while n >= 1024 and i < len(units)-1:
+        n /= 1024.0
+        i += 1
+    return f"{n:,.1f} {units[i]}"
+
+@app.route('/admin/storage')
+@login_required
+@role_required('admin')
+def admin_storage():
+    con=db()
+    try:
+        tickets = con.execute("SELECT COUNT(*) AS n FROM ticket_links").fetchone()["n"]
+    except Exception:
+        tickets = 0
+    try:
+        atts = con.execute("SELECT COUNT(*) AS n FROM ticket_attachments").fetchone()["n"]
+    except Exception:
+        atts = 0
+    try:
+        msg_bytes = con.execute("SELECT COALESCE(SUM(OCTET_LENGTH(cloud_file_data)),0) AS n FROM ticket_links").fetchone()["n"] if USE_POSTGRES else 0
+    except Exception:
+        msg_bytes = 0
+    try:
+        att_bytes = con.execute("SELECT COALESCE(SUM(OCTET_LENGTH(file_data)),0) AS n FROM ticket_attachments").fetchone()["n"] if USE_POSTGRES else 0
+    except Exception:
+        att_bytes = 0
+    con.close()
+    total = int(msg_bytes or 0) + int(att_bytes or 0)
+    body = f"""
+    <h2>Admin - Ticket Storage</h2>
+    <div class='userform'>
+      <p><b>Tickets:</b> {tickets}</p>
+      <p><b>Attachments:</b> {atts}</p>
+      <p><b>Original .msg storage:</b> {fmt_bytes(msg_bytes)}</p>
+      <p><b>Attachment storage:</b> {fmt_bytes(att_bytes)}</p>
+      <p><b>Total stored ticket files:</b> {fmt_bytes(total)}</p>
+      <p class='small'>This counts files stored inside PostgreSQL. Render free/cheap databases have limits, so review this page regularly.</p>
+    </div>
+    <h3>Cleanup</h3>
+    <div class='userform'>
+      <p>Cleanup tools should be used carefully. For now, this page only measures storage. Next we can add archive/delete by date or completed job.</p>
+    </div>
+    """
+    return page(body)
+
+
+
+@app.route('/api/upload_ticket_msg', methods=['POST'])
+def api_upload_ticket_msg():
+    supplied_key = request.headers.get('X-PMW-UPLOAD-KEY','') or request.form.get('upload_key','')
+    if supplied_key != PMW_UPLOAD_KEY:
+        return jsonify({"ok": False, "error": "Unauthorized"}), 401
+
+    f = request.files.get('msgfile')
+    if not f or not f.filename:
+        return jsonify({"ok": False, "error": "Missing msgfile"}), 400
+
+    original = secure_filename(f.filename)
+    if not original.lower().endswith('.msg'):
+        return jsonify({"ok": False, "error": "Only .msg files are allowed"}), 400
+
+    subject = request.form.get('subject','').strip()
+    sender = request.form.get('sender','').strip()
+    received = request.form.get('received','').strip()
+    job_number = request.form.get('job_number','').strip()
+    local_path = request.form.get('local_path','').strip()
+
+    safe_name = f"auto_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{original}"
+    save_path = os.path.join(CLOUD_TICKET_FOLDER, safe_name)
+    f.save(save_path)
+
+    preview = parse_msg_preview(save_path)
+    if not subject:
+        subject = preview.get('subject','') or original
+    if not sender:
+        sender = preview.get('sender','')
+    if not received:
+        received = preview.get('date','') or datetime.now().isoformat(timespec='seconds')
+
+    msg_bytes = read_file_bytes(save_path)
+
+    con=db()
+    existing = None
+    if local_path:
+        existing = con.execute("SELECT id FROM ticket_links WHERE file_path=?",(local_path,)).fetchone()
+    if existing:
+        ticket_id = existing['id']
+        con.execute("""UPDATE ticket_links
+                       SET job_number=?, subject=?, sender=?, received=?, cloud_file=?, cloud_filename=?,
+                           cloud_uploaded_at=?, cloud_uploaded_by=?,
+                           preview_subject=?, preview_sender=?, preview_date=?, preview_body=?, preview_status=?,
+                           cloud_file_data=?
+                       WHERE id=?""",
+                    (job_number, subject, sender, received, safe_name, original,
+                     datetime.now().isoformat(timespec='seconds'), 'outlook-auto',
+                     preview.get('subject',''), preview.get('sender',''), preview.get('date',''), preview.get('body',''), preview.get('status',''),
+                     msg_bytes, ticket_id))
+    else:
+        con.execute("""INSERT INTO ticket_links(job_number,subject,sender,received,file_path,created_at,
+                       cloud_file,cloud_filename,cloud_uploaded_at,cloud_uploaded_by,
+                       preview_subject,preview_sender,preview_date,preview_body,preview_status,cloud_file_data)
+                       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (job_number, subject, sender, received, local_path, datetime.now().isoformat(timespec='seconds'),
+                     safe_name, original, datetime.now().isoformat(timespec='seconds'), 'outlook-auto',
+                     preview.get('subject',''), preview.get('sender',''), preview.get('date',''), preview.get('body',''), preview.get('status',''),
+                     msg_bytes))
+        try:
+            ticket_id = con.execute("SELECT LASTVAL() AS id").fetchone()["id"] if USE_POSTGRES else con.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+        except Exception:
+            row = con.execute("SELECT id FROM ticket_links WHERE file_path=?",(local_path,)).fetchone()
+            ticket_id = row['id'] if row else None
+    con.commit(); con.close()
+
+    if ticket_id:
+        # replace attachment records for this ticket and extract current attachments
+        con=db()
+        try:
+            old_atts=con.execute("SELECT stored_filename FROM ticket_attachments WHERE ticket_id=?",(ticket_id,)).fetchall()
+            for a in old_atts:
+                try:
+                    old_path = os.path.join(CLOUD_ATTACHMENT_FOLDER, a['stored_filename'])
+                    if os.path.exists(old_path):
+                        os.remove(old_path)
+                except Exception:
+                    pass
+            con.execute("DELETE FROM ticket_attachments WHERE ticket_id=?",(ticket_id,))
+            con.commit()
+        finally:
+            con.close()
+        extracted = extract_msg_attachments(ticket_id, save_path)
+    else:
+        extracted = []
+
+    return jsonify({"ok": True, "ticket_id": ticket_id, "attachments": len(extracted), "subject": subject})
 
 
 @app.route('/ticket_upload/<int:ticket_id>', methods=['POST'])
@@ -2942,7 +3087,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v38 DB Stored Ticket Files')
+    print('PMW Ticket + Fabrication APP v39 Auto Outlook Upload')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)

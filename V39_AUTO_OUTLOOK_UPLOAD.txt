@@ -1,0 +1,19 @@
+PMW Render v39 Auto Outlook Upload
+
+Built from v38.
+
+Adds:
+- Secure API endpoint: /api/upload_ticket_msg
+- Outlook macro can POST saved .msg files automatically.
+- Uploaded .msg and attachments are stored in PostgreSQL.
+- Tickets appear automatically in the Tickets page.
+- Adds Admin > Storage page to monitor ticket file storage usage.
+
+Render setup:
+1. Add environment variable on your web service:
+   PMW_UPLOAD_KEY = choose a long secret key
+2. Put the same key in the Outlook macro constant PMW_CLOUD_UPLOAD_KEY.
+3. Deploy v39.
+4. Update the Outlook macro.
+5. Move a test email into Ticketing.
+6. Confirm it appears in Tickets with View Email + attachments.
