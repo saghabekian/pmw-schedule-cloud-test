@@ -1,0 +1,19 @@
+PMW Render v37 Auto Ticket Attachment Link
+
+Built from v36.
+
+Change:
+- After a ticket .msg is uploaded and attachments are extracted,
+  clicking Add to Fabrication or Add to Numbering automatically puts that same
+  email/attachment preview link into the schedule cell.
+- You no longer choose the email again.
+- The envelope icon opens the ticket preview page with body + attachments.
+- If no .msg was uploaded yet, it falls back to Office Path info.
+
+Test:
+1. Import ticket drop.
+2. Upload .msg on Tickets page.
+3. Click Add to Fabrication.
+4. Go to schedule.
+5. Click envelope icon.
+6. It should open the email/attachments preview directly.

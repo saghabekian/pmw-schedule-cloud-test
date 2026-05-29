@@ -19,7 +19,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v36 Mobile Portrait Scroll Fix"
+APP_VERSION = "v37 Auto Ticket Attachment Link"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -982,7 +982,7 @@ def reveal_file(path):
 
 def cloud_notice_banner():
     if os.environ.get("RENDER"):
-        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Mobile Portrait Scroll Fix: old database columns are upgraded automatically on startup.</div>"
+        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Auto Ticket Attachment Link: old database columns are upgraded automatically on startup.</div>"
     return ""
 
 
@@ -2378,12 +2378,73 @@ def open_ticket_id():
 @app.route('/add_ticket_to_schedule')
 @login_required
 @role_required('editor')
-def add_ticket_to_schedule_route():
-    tid=request.args.get('id','')
-    side=request.args.get('side','fabrication')
-    ok,msg=add_ticket_to_schedule(tid, side)
-    flash(msg)
-    return redirect('/')
+def add_ticket_to_schedule():
+    ticket_id = request.args.get('id')
+    side = request.args.get('side','fabrication')
+    sheet = request.args.get('sheet','Fabrication Schedule')
+
+    con=db()
+    t=con.execute("SELECT * FROM ticket_links WHERE id=?",(ticket_id,)).fetchone()
+    if not t:
+        con.close()
+        flash('Ticket not found.')
+        return redirect('/tickets')
+
+    if side == 'numbering':
+        job_col = 2
+    else:
+        job_col = 5
+
+    target_row = None
+    for r in range(3,51):
+        row=con.execute("SELECT value,link_path FROM workbook_cells WHERE sheet_name=? AND row_num=? AND col_num=?",
+                        (sheet,r,job_col)).fetchone()
+        if not row or ((row['value'] or '').strip()=='' and (row['link_path'] or '').strip()==''):
+            target_row = r
+            break
+
+    if target_row is None:
+        con.close()
+        flash('No open row available on schedule.')
+        return redirect('/tickets')
+
+    subject = t['subject'] or ''
+    job = t['job_number'] or ''
+
+    cloud_file = ''
+    try:
+        cloud_file = t['cloud_file'] or ''
+    except Exception:
+        cloud_file = ''
+
+    if cloud_file.strip():
+        link_path = '/ticket_view_email/' + str(ticket_id)
+        label = 'View Email + Attachments'
+    else:
+        local_path = t['file_path'] or ''
+        link_path = local_path if local_path else ('/ticket_link_info/' + str(ticket_id))
+        label = 'Office Path'
+
+    display_text = (job + ' - ' + subject).strip(' -') if job else subject
+    con.close()
+
+    upsert_workbook_cell(
+        sheet,target_row,job_col,
+        display_text,
+        '#fff066',
+        '',
+        link_path,
+        label,
+        '',
+        '',
+        '',
+        session.get('username','')
+    )
+
+    log('ADD_TICKET_TO_SCHEDULE', f'ticket {ticket_id} -> {side} row {target_row}')
+    flash('Ticket added to schedule with its email/attachment preview link.')
+    return redirect('/?sheet=' + urllib.parse.quote(sheet))
+
 
 @app.route('/open_link')
 @login_required
@@ -2809,7 +2870,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v36 Mobile Portrait Scroll Fix')
+    print('PMW Ticket + Fabrication APP v37 Auto Ticket Attachment Link')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
