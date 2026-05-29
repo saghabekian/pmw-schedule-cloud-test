@@ -1,0 +1,21 @@
+PMW Render v41 Sort Renumber Fix
+
+Built from v40.
+
+Fixes:
+- Sort Fabrication moved the job cell correctly but preserved the old left order number.
+- After sorting, the order column is now rewritten cleanly as 1,2,3,4,5...
+- Job cell, envelope link, email preview, attachments, colors, rich text, and notes still move together.
+
+Test:
+Before:
+5 = JAKES
+6 = Supply
+7 = Goose Neck
+
+After Sort:
+5 = Goose Neck
+6 = Supply
+7 = JAKES
+
+The left numbers should remain 1,2,3,4,5,6,7,8 with no duplicate 7.
