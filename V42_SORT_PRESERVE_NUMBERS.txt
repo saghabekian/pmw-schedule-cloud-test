@@ -1,0 +1,23 @@
+PMW Render v42 Sort Preserve Numbers
+
+Corrects the sort rule.
+
+Rule:
+- Whatever number you type in the left/order box stays attached to that job.
+- Sort uses that number to reorder the full 3-cell row.
+- The 3 cells move together:
+  sort number + job/description/email link + done/notes
+- It does NOT auto-renumber after sorting.
+
+Example:
+Before:
+7 | JAKES
+6 | Supply
+5 | Goose Neck
+
+After Sort:
+5 | Goose Neck
+6 | Supply
+7 | JAKES
+
+This version is made to replace the bad v41 renumber behavior.

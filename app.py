@@ -20,7 +20,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v41 Sort Renumber Fix"
+APP_VERSION = "v42 Sort Preserve Numbers"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -647,24 +647,28 @@ def save_posted_cells(sheet):
 
 
 def sort_side(sheet, key_col, job_col, note_col):
-    """V41: Sort one schedule side as full row groups, then renumber the order column.
+    """V42: Sort by the number typed in the left/order cell and keep that number with the job.
 
-    Important:
-    - Sort order is based on the job/description cell, not the old order number.
-    - Job text, email links, colors, rich text, and notes move together.
-    - The left order column is rewritten as 1,2,3,4... after sort.
+    Correct PMW rule:
+    - The number typed in the left box is the priority/sort number.
+    - That number stays attached to the job.
+    - The 3 cells move together:
+      [sort number] + [job/description/email link] + [done/notes]
+    - We do NOT auto-renumber after sorting.
     """
     side_cols = [key_col, job_col, note_col]
     con = db()
     cur = con.cursor()
     user = session.get('username','')
 
-    def job_sort_key(v):
+    def sort_key(v):
         st = str(v or '').strip()
-        # Put BURN near where alphabetical sort would put it, and blank rows last.
         if st == "":
-            return (2, "")
-        return (0, st.lower())
+            return (2, 999999, "")
+        try:
+            return (0, float(st), st)
+        except Exception:
+            return (1, 999999, st.lower())
 
     def get_cell(r, c):
         row = cur.execute("""SELECT value,bg_color,text_color,link_path,link_label,font_size,bold,rich_html
@@ -699,53 +703,29 @@ def sort_side(sheet, key_col, job_col, note_col):
                 for cell in row_obj
             )
             if has_anything:
-                # V41: sort by the job/description cell, not the old number cell.
-                rows.append((job_sort_key(row_obj[1]["value"]), r, row_obj))
+                # Sort by the left/order cell and keep that number with the job.
+                rows.append((sort_key(row_obj[0]["value"]), r, row_obj))
 
         rows.sort(key=lambda x: (x[0], x[1]))
 
-        # Clear entire side first.
+        # Hard clear the full side first so old/stale cells cannot remain behind.
         for r in range(3,51):
             for c in side_cols:
                 upsert_workbook_cell_cur(cur, sheet, r, c, '', '', '', '', '', '', '', '', user)
 
-        # Rewrite sorted rows back as full row groups.
-        # V41: key/order column is renumbered sequentially based on visible schedule row.
+        # Rewrite sorted rows. Every cell value/format/link stays with its original 3-cell row group.
         target_r = 3
-        display_num = 1
         for _, old_r, row_obj in rows:
-            # Order number cell
-            order_cell = row_obj[0]
-            upsert_workbook_cell_cur(
-                cur, sheet, target_r, key_col,
-                str(display_num),
-                order_cell["bg_color"], order_cell["text_color"],
-                '', '', order_cell["font_size"], order_cell["bold"], order_cell["rich_html"],
-                user
-            )
-
-            # Job/description cell keeps all ticket/email link metadata
-            job_cell = row_obj[1]
-            upsert_workbook_cell_cur(
-                cur, sheet, target_r, job_col,
-                job_cell["value"], job_cell["bg_color"], job_cell["text_color"],
-                job_cell["link_path"], job_cell["link_label"],
-                job_cell["font_size"], job_cell["bold"], job_cell["rich_html"],
-                user
-            )
-
-            # Notes/done cell moves with the job
-            note_cell = row_obj[2]
-            upsert_workbook_cell_cur(
-                cur, sheet, target_r, note_col,
-                note_cell["value"], note_cell["bg_color"], note_cell["text_color"],
-                note_cell["link_path"], note_cell["link_label"],
-                note_cell["font_size"], note_cell["bold"], note_cell["rich_html"],
-                user
-            )
-
+            for idx, c in enumerate(side_cols):
+                cell = row_obj[idx]
+                upsert_workbook_cell_cur(
+                    cur, sheet, target_r, c,
+                    cell["value"], cell["bg_color"], cell["text_color"],
+                    cell["link_path"], cell["link_label"],
+                    cell["font_size"], cell["bold"], cell["rich_html"],
+                    user
+                )
             target_r += 1
-            display_num += 1
 
         con.commit()
     finally:
@@ -1018,7 +998,7 @@ def reveal_file(path):
 
 def cloud_notice_banner():
     if os.environ.get("RENDER"):
-        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Sort Renumber Fix: old database columns are upgraded automatically on startup.</div>"
+        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Sort Preserve Numbers: old database columns are upgraded automatically on startup.</div>"
     return ""
 
 
@@ -3121,7 +3101,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v41 Sort Renumber Fix')
+    print('PMW Ticket + Fabrication APP v42 Sort Preserve Numbers')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
