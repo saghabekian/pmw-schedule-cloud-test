@@ -1,4 +1,5 @@
 import os, sqlite3, html, urllib.parse, subprocess, platform, mimetypes
+from io import BytesIO
 from datetime import datetime
 from functools import wraps
 from flask import Flask, request, redirect, url_for, session, render_template_string, flash, jsonify, send_from_directory
@@ -19,7 +20,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v37 Auto Ticket Attachment Link"
+APP_VERSION = "v38 DB Stored Ticket Files"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -982,7 +983,7 @@ def reveal_file(path):
 
 def cloud_notice_banner():
     if os.environ.get("RENDER"):
-        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Auto Ticket Attachment Link: old database columns are upgraded automatically on startup.</div>"
+        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 DB Stored Ticket Files: old database columns are upgraded automatically on startup.</div>"
     return ""
 
 
@@ -2143,12 +2144,15 @@ def ticket_upload(ticket_id):
     extracted = extract_msg_attachments(ticket_id, save_path)
 
     con=db()
+    msg_bytes = read_file_bytes(save_path)
     con.execute("""UPDATE ticket_links
                    SET cloud_file=?, cloud_filename=?, cloud_uploaded_at=?, cloud_uploaded_by=?,
-                       preview_subject=?, preview_sender=?, preview_date=?, preview_body=?, preview_status=?
+                       preview_subject=?, preview_sender=?, preview_date=?, preview_body=?, preview_status=?,
+                       cloud_file_data=?
                    WHERE id=?""",
                 (safe_name, original, datetime.now().isoformat(timespec='seconds'), session.get('username',''),
-                 preview.get('subject',''), preview.get('sender',''), preview.get('date',''), preview.get('body',''), preview.get('status',''), ticket_id))
+                 preview.get('subject',''), preview.get('sender',''), preview.get('date',''), preview.get('body',''), preview.get('status',''),
+                 msg_bytes, ticket_id))
     con.commit(); con.close()
 
     log('UPLOAD_TICKET_MSG', f'{ticket_id} / {original}')
@@ -2160,33 +2164,49 @@ def ticket_upload(ticket_id):
 @app.route('/ticket_attachment/<int:attachment_id>')
 @login_required
 def ticket_attachment(attachment_id):
-    from flask import send_file
     con=db()
     a=con.execute("SELECT * FROM ticket_attachments WHERE id=?",(attachment_id,)).fetchone()
     con.close()
     if not a:
         flash('Attachment not found.')
         return redirect('/tickets')
+    try:
+        data = a['file_data']
+    except Exception:
+        data = None
+
+    if data:
+        return send_bytes_as_file(data, a['original_filename'], a['content_type'] or None, as_attachment=False)
+
     path=os.path.join(CLOUD_ATTACHMENT_FOLDER, a['stored_filename'])
     if not os.path.exists(path):
-        flash('Attachment file is missing from storage.')
+        flash('Attachment file is missing from temporary storage. Re-upload the .msg one time so v38 can save attachments permanently in the database.')
         return redirect('/tickets')
+    from flask import send_file
     return send_file(path, as_attachment=False, download_name=a['original_filename'], mimetype=a['content_type'] or None)
 
 @app.route('/ticket_attachment_download/<int:attachment_id>')
 @login_required
 def ticket_attachment_download(attachment_id):
-    from flask import send_file
     con=db()
     a=con.execute("SELECT * FROM ticket_attachments WHERE id=?",(attachment_id,)).fetchone()
     con.close()
     if not a:
         flash('Attachment not found.')
         return redirect('/tickets')
+    try:
+        data = a['file_data']
+    except Exception:
+        data = None
+
+    if data:
+        return send_bytes_as_file(data, a['original_filename'], a['content_type'] or None, as_attachment=True)
+
     path=os.path.join(CLOUD_ATTACHMENT_FOLDER, a['stored_filename'])
     if not os.path.exists(path):
-        flash('Attachment file is missing from storage.')
+        flash('Attachment file is missing from temporary storage. Re-upload the .msg one time so v38 can save attachments permanently in the database.')
         return redirect('/tickets')
+    from flask import send_file
     return send_file(path, as_attachment=True, download_name=a['original_filename'], mimetype=a['content_type'] or None)
 
 
@@ -2268,22 +2288,30 @@ def ticket_view_email(ticket_id):
 @app.route('/ticket_download/<int:ticket_id>')
 @login_required
 def ticket_download(ticket_id):
-    from flask import send_file
     con=db()
-    t=con.execute("SELECT cloud_file,cloud_filename,file_path,subject FROM ticket_links WHERE id=?",(ticket_id,)).fetchone()
+    t=con.execute("SELECT cloud_file,cloud_filename,cloud_file_data,file_path,subject FROM ticket_links WHERE id=?",(ticket_id,)).fetchone()
     con.close()
     if not t:
         flash('Ticket not found.')
         return redirect('/tickets')
     cloud_file = (t.get('cloud_file') if hasattr(t, 'get') else t['cloud_file']) or ''
     cloud_filename = (t.get('cloud_filename') if hasattr(t, 'get') else t['cloud_filename']) or ''
+    try:
+        cloud_data = t['cloud_file_data']
+    except Exception:
+        cloud_data = None
+
+    if cloud_data:
+        return send_bytes_as_file(cloud_data, cloud_filename or cloud_file or 'ticket.msg', 'application/vnd.ms-outlook', as_attachment=True)
+
     if not cloud_file:
         flash('No cloud .msg file has been uploaded for this ticket yet.')
         return redirect('/tickets')
     full_path = os.path.join(CLOUD_TICKET_FOLDER, cloud_file)
     if not os.path.exists(full_path):
-        flash('Cloud file is missing from storage.')
+        flash('Cloud file is missing from temporary storage. Re-upload the .msg one time so v38 can save it permanently in the database.')
         return redirect('/tickets')
+    from flask import send_file
     return send_file(full_path, as_attachment=True, download_name=cloud_filename or cloud_file)
 
 @app.route('/ticket_link_info/<int:ticket_id>')
@@ -2672,6 +2700,49 @@ def audit():
 
 
 
+
+def upgrade_ticket_db_file_storage():
+    """Store uploaded .msg and extracted attachments in DB so Render restarts do not lose files."""
+    try:
+        con=db(); cur=con.cursor()
+        if USE_POSTGRES:
+            try:
+                cur.execute("ALTER TABLE ticket_links ADD COLUMN cloud_file_data BYTEA")
+            except Exception:
+                try: con.con.rollback()
+                except Exception: pass
+            try:
+                cur.execute("ALTER TABLE ticket_attachments ADD COLUMN file_data BYTEA")
+            except Exception:
+                try: con.con.rollback()
+                except Exception: pass
+        else:
+            try:
+                cur.execute("ALTER TABLE ticket_links ADD COLUMN cloud_file_data BLOB")
+            except Exception:
+                pass
+            try:
+                cur.execute("ALTER TABLE ticket_attachments ADD COLUMN file_data BLOB")
+            except Exception:
+                pass
+        con.commit(); con.close()
+    except Exception as e:
+        print("DB file storage upgrade failed:", repr(e))
+
+def read_file_bytes(path):
+    with open(path, 'rb') as f:
+        return f.read()
+
+def send_bytes_as_file(data, filename, mimetype=None, as_attachment=False):
+    from flask import send_file
+    if data is None:
+        flash('Stored file data is missing.')
+        return redirect('/tickets')
+    if isinstance(data, memoryview):
+        data = data.tobytes()
+    return send_file(BytesIO(data), as_attachment=as_attachment, download_name=filename, mimetype=mimetype or 'application/octet-stream')
+
+
 def upgrade_ticket_attachment_tables():
     try:
         con=db(); cur=con.cursor()
@@ -2701,11 +2772,11 @@ def upgrade_ticket_attachment_tables():
     except Exception as e:
         print("Ticket attachment table upgrade failed:", repr(e))
 
-def save_ticket_attachment_record(ticket_id, original, stored, content_type, size_bytes):
+def save_ticket_attachment_record(ticket_id, original, stored, content_type, size_bytes, file_data=None):
     con=db()
-    con.execute("""INSERT INTO ticket_attachments(ticket_id,original_filename,stored_filename,content_type,size_bytes,uploaded_at,uploaded_by)
-                   VALUES(?,?,?,?,?,?,?)""",
-                (ticket_id, original, stored, content_type, int(size_bytes or 0), datetime.now().isoformat(timespec='seconds'), session.get('username','')))
+    con.execute("""INSERT INTO ticket_attachments(ticket_id,original_filename,stored_filename,content_type,size_bytes,uploaded_at,uploaded_by,file_data)
+                   VALUES(?,?,?,?,?,?,?,?)""",
+                (ticket_id, original, stored, content_type, int(size_bytes or 0), datetime.now().isoformat(timespec='seconds'), session.get('username',''), file_data))
     con.commit(); con.close()
 
 def extract_msg_attachments(ticket_id, msg_path):
@@ -2743,7 +2814,7 @@ def extract_msg_attachments(ticket_id, msg_path):
                 if os.path.exists(path):
                     ctype = mimetypes.guess_type(original)[0] or 'application/octet-stream'
                     size = os.path.getsize(path)
-                    save_ticket_attachment_record(ticket_id, original, stored, ctype, size)
+                    save_ticket_attachment_record(ticket_id, original, stored, ctype, size, read_file_bytes(path))
                     saved.append({"filename": original, "stored": stored, "content_type": ctype, "size": size})
             except Exception as e:
                 print("Attachment extract failed:", repr(e))
@@ -2837,6 +2908,7 @@ def startup_init_for_cloud():
         upgrade_ticket_cloud_columns()
         upgrade_ticket_preview_columns()
         upgrade_ticket_attachment_tables()
+        upgrade_ticket_db_file_storage()
 
         con=db()
         try:
@@ -2870,7 +2942,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v37 Auto Ticket Attachment Link')
+    print('PMW Ticket + Fabrication APP v38 DB Stored Ticket Files')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)

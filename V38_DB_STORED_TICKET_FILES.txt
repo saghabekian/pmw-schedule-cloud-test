@@ -1,0 +1,16 @@
+PMW Render v38 DB Stored Ticket Files
+
+Fixes ticket attachments changing/breaking after Render restarts.
+
+Cause:
+- Earlier versions stored uploaded .msg and extracted attachments on Render's temporary file system.
+- PostgreSQL kept the ticket records, but Render could delete the actual files on restart.
+
+Fix:
+- v38 stores the original uploaded .msg bytes in PostgreSQL.
+- v38 stores extracted attachment bytes in PostgreSQL.
+- Preview/download routes prefer database file data.
+
+Important:
+Existing uploaded tickets from before v38 may need the .msg re-uploaded one time.
+New uploads after v38 should survive restarts/redeploys.
