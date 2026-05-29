@@ -1,0 +1,11 @@
+PMW Render v43 True Row Group Sort
+
+Fixes:
+- Job cell moved correctly, but the number cell reverted/stayed based on the destination row.
+- Sort now captures number + job/email link + done cell from the same row and moves them together.
+
+Rule:
+- Sort by number cell only.
+- Same numbers keep original top-to-bottom order.
+- Do not renumber.
+- Do not sort by job text.

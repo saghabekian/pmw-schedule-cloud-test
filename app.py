@@ -20,7 +20,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v42 Sort Preserve Numbers"
+APP_VERSION = "v43 True Row Group Sort"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -647,28 +647,41 @@ def save_posted_cells(sheet):
 
 
 def sort_side(sheet, key_col, job_col, note_col):
-    """V42: Sort by the number typed in the left/order cell and keep that number with the job.
+    """V43: True row-group sort.
 
-    Correct PMW rule:
-    - The number typed in the left box is the priority/sort number.
-    - That number stays attached to the job.
-    - The 3 cells move together:
-      [sort number] + [job/description/email link] + [done/notes]
-    - We do NOT auto-renumber after sorting.
+    Correct PMW behavior:
+    - The left number cell stays attached to its job.
+    - The job/description/email link cell stays attached to that number.
+    - The done/notes cell stays attached too.
+    - Sort by the left number cell only.
+    - Do not renumber.
+    - Do not sort by job text.
     """
     side_cols = [key_col, job_col, note_col]
     con = db()
     cur = con.cursor()
     user = session.get('username','')
 
-    def sort_key(v):
+    def clean_num(v):
         st = str(v or '').strip()
-        if st == "":
-            return (2, 999999, "")
+        st = st.replace('\xa0', ' ')
+        st = st.replace(',', '')
+        cleaned = ''.join(ch for ch in st if ch.isdigit() or ch in '.-')
+        if cleaned in ('', '.', '-', '-.'):
+            return None
         try:
-            return (0, float(st), st)
+            return float(cleaned)
         except Exception:
-            return (1, 999999, st.lower())
+            return None
+
+    def sort_key(v):
+        n = clean_num(v)
+        if n is not None:
+            return (0, n)
+        st = str(v or '').strip().lower()
+        if st == '':
+            return (2, 999999)
+        return (1, st)
 
     def get_cell(r, c):
         row = cur.execute("""SELECT value,bg_color,text_color,link_path,link_label,font_size,bold,rich_html
@@ -690,34 +703,41 @@ def sort_side(sheet, key_col, job_col, note_col):
     try:
         rows = []
         for r in range(3,51):
-            row_obj = [get_cell(r,c) for c in side_cols]
-            has_anything = any(
-                cell["value"].strip()
-                or cell["bg_color"].strip()
-                or cell["text_color"].strip()
-                or cell["link_path"].strip()
-                or cell["link_label"].strip()
-                or cell["font_size"].strip()
-                or cell["bold"].strip()
-                or cell["rich_html"].strip()
-                for cell in row_obj
-            )
-            if has_anything:
-                # Sort by the left/order cell and keep that number with the job.
-                rows.append((sort_key(row_obj[0]["value"]), r, row_obj))
+            key_cell = get_cell(r, key_col)
+            job_cell = get_cell(r, job_col)
+            note_cell = get_cell(r, note_col)
 
+            has_anything = (
+                key_cell["value"].strip()
+                or job_cell["value"].strip()
+                or note_cell["value"].strip()
+                or key_cell["link_path"].strip()
+                or job_cell["link_path"].strip()
+                or note_cell["link_path"].strip()
+                or key_cell["bg_color"].strip()
+                or job_cell["bg_color"].strip()
+                or note_cell["bg_color"].strip()
+                or key_cell["rich_html"].strip()
+                or job_cell["rich_html"].strip()
+                or note_cell["rich_html"].strip()
+            )
+
+            if has_anything:
+                rows.append((sort_key(key_cell["value"]), r, [key_cell, job_cell, note_cell]))
+
+        # Stable sort: if two rows have the same number, keep original top-to-bottom order.
         rows.sort(key=lambda x: (x[0], x[1]))
 
-        # Hard clear the full side first so old/stale cells cannot remain behind.
+        # Clear the side completely first.
         for r in range(3,51):
             for c in side_cols:
                 upsert_workbook_cell_cur(cur, sheet, r, c, '', '', '', '', '', '', '', '', user)
 
-        # Rewrite sorted rows. Every cell value/format/link stays with its original 3-cell row group.
+        # Write each locked 3-cell group back together.
         target_r = 3
-        for _, old_r, row_obj in rows:
+        for _, old_r, row_group in rows:
             for idx, c in enumerate(side_cols):
-                cell = row_obj[idx]
+                cell = row_group[idx]
                 upsert_workbook_cell_cur(
                     cur, sheet, target_r, c,
                     cell["value"], cell["bg_color"], cell["text_color"],
@@ -3101,7 +3121,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v42 Sort Preserve Numbers')
+    print('PMW Ticket + Fabrication APP v43 True Row Group Sort')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
