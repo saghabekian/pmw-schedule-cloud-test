@@ -20,7 +20,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v39 Auto Outlook Upload"
+APP_VERSION = "v40 Sort Fabrication Row Fix"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -647,25 +647,23 @@ def save_posted_cells(sheet):
 
 
 def sort_side(sheet, key_col, job_col, note_col):
-    """Sort one side of the schedule using one DB connection.
-    Preserves values, colors, links, font settings, and rich text.
-    """
+    """V40: Sort one schedule side as complete 3-cell row groups."""
     side_cols = [key_col, job_col, note_col]
-    con=db()
-    cur=con.cursor()
-    user=session.get('username','')
+    con = db()
+    cur = con.cursor()
+    user = session.get('username','')
 
     def sort_key(v):
-        st=str(v or '').strip()
+        st = str(v or '').strip()
         try:
             return (0, float(st))
         except Exception:
             return (1, st.lower())
 
     def get_cell(r, c):
-        row=cur.execute("""SELECT value,bg_color,text_color,link_path,link_label,font_size,bold,rich_html
-                           FROM workbook_cells
-                           WHERE sheet_name=? AND row_num=? AND col_num=?""",(sheet,r,c)).fetchone()
+        row = cur.execute("""SELECT value,bg_color,text_color,link_path,link_label,font_size,bold,rich_html
+                             FROM workbook_cells
+                             WHERE sheet_name=? AND row_num=? AND col_num=?""", (sheet,r,c)).fetchone()
         if not row:
             return {"value":"","bg_color":"","text_color":"","link_path":"","link_label":"","font_size":"","bold":"","rich_html":""}
         return {
@@ -680,36 +678,41 @@ def sort_side(sheet, key_col, job_col, note_col):
         }
 
     try:
-        rows=[]
+        rows = []
         for r in range(3,51):
-            row_obj=[get_cell(r, c) for c in side_cols]
-            if any(
-                x["value"].strip()
-                or x["bg_color"].strip()
-                or x["text_color"].strip()
-                or x["link_path"].strip()
-                or x["link_label"].strip()
-                or x["font_size"].strip()
-                or x["bold"].strip()
-                or x["rich_html"].strip()
-                for x in row_obj
-            ):
+            row_obj = [get_cell(r,c) for c in side_cols]
+            has_anything = any(
+                cell["value"].strip()
+                or cell["bg_color"].strip()
+                or cell["text_color"].strip()
+                or cell["link_path"].strip()
+                or cell["link_label"].strip()
+                or cell["font_size"].strip()
+                or cell["bold"].strip()
+                or cell["rich_html"].strip()
+                for cell in row_obj
+            )
+            if has_anything:
                 rows.append((sort_key(row_obj[0]["value"]), r, row_obj))
 
         rows.sort(key=lambda x: (x[0], x[1]))
 
+        # Clear entire side first using the same helper used everywhere else.
         for r in range(3,51):
             for c in side_cols:
-                upsert_workbook_cell_cur(cur, sheet,r,c,'','','','','','','','',user)
+                upsert_workbook_cell_cur(cur, sheet, r, c, '', '', '', '', '', '', '', '', user)
 
-        target_r=3
+        # Rewrite sorted rows back as full row groups.
+        target_r = 3
         for _, old_r, row_obj in rows:
             for idx, c in enumerate(side_cols):
-                cell=row_obj[idx]
+                cell = row_obj[idx]
                 upsert_workbook_cell_cur(
-                    cur, sheet,target_r,c,
-                    cell["value"],cell["bg_color"],cell["text_color"],cell["link_path"],cell["link_label"],
-                    cell["font_size"],cell["bold"],cell["rich_html"],user
+                    cur, sheet, target_r, c,
+                    cell["value"], cell["bg_color"], cell["text_color"],
+                    cell["link_path"], cell["link_label"],
+                    cell["font_size"], cell["bold"], cell["rich_html"],
+                    user
                 )
             target_r += 1
 
@@ -984,7 +987,7 @@ def reveal_file(path):
 
 def cloud_notice_banner():
     if os.environ.get("RENDER"):
-        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Auto Outlook Upload: old database columns are upgraded automatically on startup.</div>"
+        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Sort Fabrication Row Fix: old database columns are upgraded automatically on startup.</div>"
     return ""
 
 
@@ -3087,7 +3090,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v39 Auto Outlook Upload')
+    print('PMW Ticket + Fabrication APP v40 Sort Fabrication Row Fix')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)

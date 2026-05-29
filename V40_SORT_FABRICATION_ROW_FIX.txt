@@ -1,0 +1,15 @@
+PMW Render v40 Sort Fabrication Row Fix
+
+Built from v39 Auto Outlook Upload.
+
+Fixes:
+- Sort Fabrication leaving a stuck/duplicate order number behind.
+- Sort Numbering uses the same corrected row-group logic.
+- Each side sorts as complete 3-cell row groups.
+- Preserves email/attachment preview links, colors, font settings, and rich text.
+
+Test:
+1. Put duplicate/out-of-order numbers on Fabrication.
+2. Click Sort Fabrication.
+3. Confirm the order column, job cell, and email icon all move together.
+4. Confirm no old number stays behind.
