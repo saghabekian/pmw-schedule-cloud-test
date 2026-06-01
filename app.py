@@ -2753,7 +2753,7 @@ def tickets():
         rows=con.execute("SELECT * FROM ticket_links ORDER BY id DESC LIMIT 200").fetchall()
     con.close()
     body="<div class='toolbar'><b>Imported Tickets</b><form style='display:inline-flex;gap:5px;margin-left:10px'><input name='q' value='"+html.escape(q, quote=True)+"' placeholder='Search job, subject, sender'><button>Search</button></form><span class='small'>Use Add to Numbering/Fabrication to place a linked ticket on the schedule.</span></div>"
-    body+="<table class='admin'><tr><th>Received</th><th>Job</th><th>Subject</th><th>Sender</th><th>Email Link</th><th>Cloud Upload</th><th>Add to Schedule</th></tr>"
+    body+="<table class='admin'><tr><th>Status</th><th>Received</th><th>Job</th><th>Subject</th><th>Sender</th><th>Email Link</th><th>Cloud Upload</th><th>Add to Schedule</th></tr>"
     for r in rows:
         cloud_file = ''
         try:
@@ -2765,8 +2765,16 @@ def tickets():
         else:
             openlink = "<a class='btn' href='/ticket_link_info/"+str(r['id'])+"'>Office Path</a>"
         uploadform = "<form method='post' action='/ticket_upload/"+str(r['id'])+"' enctype='multipart/form-data' style='display:flex;gap:4px;align-items:center'><input type='file' name='msgfile' accept='.msg' style='max-width:190px'><button>Upload .msg</button></form>"
-        addlinks = "<a class='btn green' href='/add_ticket_to_schedule?id="+str(r['id'])+"&side=numbering'>Numbering</a> <a class='btn green' href='/add_ticket_to_schedule?id="+str(r['id'])+"&side=fabrication'>Fabrication</a>"
-        body += f"<tr><td>{html.escape(r['received'] or '')}</td><td>{html.escape(r['job_number'] or '')}</td><td>{html.escape(r['subject'] or '')}</td><td>{html.escape(r['sender'] or '')}</td><td>{openlink}</td><td>{uploadform}</td><td>{addlinks}</td></tr>"
+        scheduled_html = ticket_scheduled_badge(r)
+        try:
+            already_scheduled = (r['scheduled_status'] or '') == 'scheduled'
+        except Exception:
+            already_scheduled = False
+        if already_scheduled:
+            addlinks = "<span class='small'>Already added</span> <a class='btn' href='/add_ticket_to_schedule?id="+str(r['id'])+"&side=numbering'>Add Again Numbering</a> <a class='btn' href='/add_ticket_to_schedule?id="+str(r['id'])+"&side=fabrication'>Add Again Fabrication</a>"
+        else:
+            addlinks = "<a class='btn green' href='/add_ticket_to_schedule?id="+str(r['id'])+"&side=numbering'>Numbering</a> <a class='btn green' href='/add_ticket_to_schedule?id="+str(r['id'])+"&side=fabrication'>Fabrication</a>"
+        body += f"<tr><td>{scheduled_html}</td><td>{html.escape(r['received'] or '')}</td><td>{html.escape(r['job_number'] or '')}</td><td>{html.escape(r['subject'] or '')}</td><td>{html.escape(r['sender'] or '')}</td><td>{openlink}</td><td>{uploadform}</td><td>{addlinks}</td></tr>"
     body+="</table>"
     return page(body)
 
@@ -2848,6 +2856,7 @@ def add_ticket_to_schedule():
         session.get('username','')
     )
 
+    mark_ticket_scheduled(ticket_id, side, sheet, target_row)
     log('ADD_TICKET_TO_SCHEDULE', f'ticket {ticket_id} -> {side} row {target_row}')
     flash('Ticket added to schedule with its email/attachment preview link.')
     return redirect('/?sheet=' + urllib.parse.quote(sheet))

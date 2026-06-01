@@ -1,0 +1,11 @@
+PMW Render v46 Ticket Scheduled Status
+
+Built from stable v45.5.
+
+Adds:
+- Tickets page shows Status column:
+  Not Scheduled
+  ✓ Added to Fabrication/Numbering row X by user on timestamp
+- When Add to Fabrication or Add to Numbering is clicked, the ticket is marked scheduled.
+- Already scheduled tickets still allow Add Again, but the page warns they were already added.
+- Does not change sort, snip, date, Outlook upload, or attachment preview behavior.
