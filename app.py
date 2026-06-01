@@ -20,7 +20,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v45.3 Output Active Fix"
+APP_VERSION = "v45.4 Snip Portrait Max Fit"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -910,102 +910,195 @@ def schedule_numbers_to_rows(sheet, side, start_num, end_num):
     return sorted(set(rows))
 
 def make_snip_pdf(sheet, start_row, end_row, side):
-    """Create a small PDF snip.
-    In v17, start/end are schedule numbers typed in the Number column, not Excel row numbers.
-    The PDF always prints the top title/date and section header.
+    """v45.4: Create a portrait PDF snip that uses as much page space as possible.
+
+    Only affects Snip / Print / Email output.
+    Email Schedule and normal Print PDF are unchanged.
     """
     from reportlab.lib import colors
-    from reportlab.lib.pagesizes import landscape, letter
+    from reportlab.lib.pagesizes import letter
     from reportlab.lib.units import inch
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
-    meta=cell_meta_for(sheet)
-    d=cells_for(sheet)
+    meta = cell_meta_for(sheet)
+    d = cells_for(sheet)
 
     selected_rows = schedule_numbers_to_rows(sheet, side, start_row, end_row)
     if not selected_rows:
         try:
-            sr=max(3, int(float(str(start_row).strip())))
-            er=min(50, int(float(str(end_row).strip())))
+            sr = max(3, int(float(str(start_row).strip())))
+            er = min(50, int(float(str(end_row).strip())))
             if er < sr:
                 sr, er = er, sr
-            selected_rows=list(range(sr, er+1))
+            selected_rows = list(range(sr, er + 1))
         except Exception:
-            selected_rows=[]
+            selected_rows = []
 
-    stamp=datetime.now().strftime('%Y%m%d_%H%M%S')
-    safe_sheet=''.join(ch if ch.isalnum() or ch in ('-', '_') else '_' for ch in sheet)[:40]
-    filename=f"PMW_Snip_{safe_sheet}_{side}_{start_row}-{end_row}_{stamp}.pdf"
-    path=os.path.join(EXPORT_FOLDER, filename)
+    stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    safe_sheet = ''.join(ch if ch.isalnum() or ch in ('-', '_') else '_' for ch in sheet)[:40]
+    filename = f"PMW_Snip_{safe_sheet}_{side}_{start_row}-{end_row}_{stamp}.pdf"
+    path = os.path.join(EXPORT_FOLDER, filename)
+
+    # Portrait page with tight margins so the snip prints large.
+    page_w, page_h = letter
+    margin = 0.22 * inch
+    content_w = page_w - (2 * margin)
 
     if side == "numbering":
-        cols=[1,2,3]; headers=['NUMBER','NUMBERING','STATUS/NOTES']; widths=[0.65*inch, 5.2*inch, 1.1*inch]
+        cols = [1, 2, 3]
+        headers = ['#', 'NUMBERING', 'DONE']
+        widths = [0.48 * inch, content_w - (0.48 * inch + 0.70 * inch), 0.70 * inch]
     elif side == "fabrication":
-        cols=[4,5,6]; headers=['NUMBER','FABRICATION','STATUS/NOTES']; widths=[0.65*inch, 5.2*inch, 1.1*inch]
+        cols = [4, 5, 6]
+        headers = ['#', 'FABRICATION', 'DONE']
+        widths = [0.48 * inch, content_w - (0.48 * inch + 0.70 * inch), 0.70 * inch]
     else:
-        cols=DISPLAY_COLS; headers=['NUMBER','NUMBERING','STATUS/NOTES','NUMBER','FABRICATION','STATUS/NOTES']; widths=[0.55*inch,3.25*inch,0.85*inch,0.55*inch,3.25*inch,0.85*inch]
+        # Both sides in portrait. Narrow notes columns but still use full width.
+        cols = DISPLAY_COLS
+        headers = ['#', 'NUMBERING', 'DONE', '#', 'FABRICATION', 'DONE']
+        widths = [0.34 * inch, 3.05 * inch, 0.48 * inch, 0.34 * inch, 3.05 * inch, 0.48 * inch]
 
-    doc=SimpleDocTemplate(path, pagesize=landscape(letter), rightMargin=0.35*inch, leftMargin=0.35*inch, topMargin=0.30*inch, bottomMargin=0.30*inch)
-    styles=getSampleStyleSheet()
-    title_style=ParagraphStyle('SnipTitle', parent=styles['Heading1'], alignment=1, fontName='Helvetica-Bold', fontSize=15, leading=18)
-    date_style=ParagraphStyle('SnipDate', parent=styles['Normal'], alignment=1, fontName='Helvetica-Bold', fontSize=11, leading=13)
-    cell_style=ParagraphStyle('SnipCell', parent=styles['Normal'], fontName='Helvetica', fontSize=9, leading=10)
-    head_style=ParagraphStyle('SnipHead', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=11, alignment=1)
+    # Use larger font when fewer rows are selected, smaller only when needed.
+    row_count_guess = max(1, len(selected_rows))
+    if row_count_guess <= 8:
+        cell_font = 13
+        leading = 15
+        header_font = 13
+    elif row_count_guess <= 14:
+        cell_font = 11
+        leading = 13
+        header_font = 12
+    elif row_count_guess <= 22:
+        cell_font = 9.5
+        leading = 11
+        header_font = 10.5
+    else:
+        cell_font = 8
+        leading = 9.3
+        header_font = 9
 
-    title = d.get((1,2),'FABRICATION SCHEDULE') or 'FABRICATION SCHEDULE'
+    doc = SimpleDocTemplate(
+        path,
+        pagesize=letter,   # portrait
+        rightMargin=margin,
+        leftMargin=margin,
+        topMargin=0.20 * inch,
+        bottomMargin=0.20 * inch
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'SnipTitle',
+        parent=styles['Heading1'],
+        alignment=1,
+        fontName='Helvetica-Bold',
+        fontSize=17,
+        leading=19,
+        spaceAfter=1
+    )
+    date_style = ParagraphStyle(
+        'SnipDate',
+        parent=styles['Normal'],
+        alignment=1,
+        fontName='Helvetica-Bold',
+        fontSize=12,
+        leading=14,
+        spaceAfter=4
+    )
+    cell_style = ParagraphStyle(
+        'SnipCell',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=cell_font,
+        leading=leading,
+        wordWrap='CJK'
+    )
+    head_style = ParagraphStyle(
+        'SnipHead',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=header_font,
+        leading=header_font + 1,
+        alignment=1
+    )
+
+    title = d.get((1, 2), 'FABRICATION SCHEDULE') or 'FABRICATION SCHEDULE'
     datev = get_schedule_date_settings(sheet)['display_date']
-    story=[
+
+    story = [
         Paragraph(html.escape(title), title_style),
         Paragraph(html.escape(datev), date_style),
-        Spacer(1,6)
+        Spacer(1, 2)
     ]
 
-    data=[[Paragraph(h, head_style) for h in headers]]
-    row_source=[]
+    data = [[Paragraph(h, head_style) for h in headers]]
+    row_source = []
+
     for r in selected_rows:
-        vals=[]; has=False
+        vals = []
+        has = False
         for c in cols:
-            m=meta.get((r,c), {})
-            txt=str(m.get("value",""))
+            m = meta.get((r, c), {})
+            txt = str(m.get("value", ""))
             if m.get("link_path"):
-                txt="✉ " + txt
+                txt = "✉ " + txt
             if txt.strip() or m.get("bg_color") or m.get("text_color"):
-                has=True
+                has = True
             vals.append(Paragraph(html.escape(txt), cell_style))
         if has:
-            data.append(vals); row_source.append(r)
+            data.append(vals)
+            row_source.append(r)
 
-    if len(data)==1:
+    if len(data) == 1:
         data.append([Paragraph('', cell_style) for _ in headers])
 
-    tbl=Table(data, colWidths=widths, repeatRows=1)
-    style_cmds=[
-        ('GRID',(0,0),(-1,-1),0.5,colors.black),
-        ('BACKGROUND',(0,0),(-1,0),colors.HexColor('#d9ead3')),
-        ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
-        ('ALIGN',(0,0),(0,-1),'CENTER'),
-        ('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),
+    tbl = Table(data, colWidths=widths, repeatRows=1, hAlign='CENTER')
+
+    style_cmds = [
+        ('GRID', (0, 0), (-1, -1), 0.75, colors.black),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#d9ead3')),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+        ('ALIGN', (-1, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
     ]
 
+    # For both-sides snips, center both number/done columns.
+    if len(cols) == 6:
+        for center_col in [0, 2, 3, 5]:
+            style_cmds.append(('ALIGN', (center_col, 0), (center_col, -1), 'CENTER'))
+
     for pdf_row, sheet_row in enumerate(row_source, start=1):
-        for ci,c in enumerate(cols):
-            m=meta.get((sheet_row,c), {})
-            bg=(m.get("bg_color") or "").strip()
-            txt=(m.get("text_color") or "").strip()
-            fsize=(m.get("font_size") or "").strip()
-            bold=(m.get("bold") or "").strip()
+        for ci, c in enumerate(cols):
+            m = meta.get((sheet_row, c), {})
+            bg = (m.get("bg_color") or "").strip()
+            txt = (m.get("text_color") or "").strip()
+            fsize = (m.get("font_size") or "").strip()
+            bold = (m.get("bold") or "").strip()
             if bg:
-                try: style_cmds.append(('BACKGROUND',(ci,pdf_row),(ci,pdf_row),colors.HexColor(bg)))
-                except Exception: pass
+                try:
+                    style_cmds.append(('BACKGROUND', (ci, pdf_row), (ci, pdf_row), colors.HexColor(bg)))
+                except Exception:
+                    pass
             if txt:
-                try: style_cmds.append(('TEXTCOLOR',(ci,pdf_row),(ci,pdf_row),colors.HexColor(txt)))
-                except Exception: pass
+                try:
+                    style_cmds.append(('TEXTCOLOR', (ci, pdf_row), (ci, pdf_row), colors.HexColor(txt)))
+                except Exception:
+                    pass
+            # Keep user font-size only if not smaller than the auto-fit font.
             if fsize:
-                try: style_cmds.append(('FONTSIZE',(ci,pdf_row),(ci,pdf_row),float(fsize)))
-                except Exception: pass
+                try:
+                    fs = max(float(fsize), cell_font)
+                    style_cmds.append(('FONTSIZE', (ci, pdf_row), (ci, pdf_row), fs))
+                except Exception:
+                    pass
             if bold:
-                style_cmds.append(('FONTNAME',(ci,pdf_row),(ci,pdf_row),'Helvetica-Bold'))
+                style_cmds.append(('FONTNAME', (ci, pdf_row), (ci, pdf_row), 'Helvetica-Bold'))
 
     tbl.setStyle(TableStyle(style_cmds))
     story.append(tbl)
@@ -1042,7 +1135,7 @@ def reveal_file(path):
 
 def cloud_notice_banner():
     if os.environ.get("RENDER"):
-        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Output Active Fix: old database columns are upgraded automatically on startup.</div>"
+        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Snip Portrait Max Fit: old database columns are upgraded automatically on startup.</div>"
     return ""
 
 
@@ -3289,7 +3382,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v45.3 Output Active Fix')
+    print('PMW Ticket + Fabrication APP v45.4 Snip Portrait Max Fit')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)

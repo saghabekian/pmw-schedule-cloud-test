@@ -1,0 +1,11 @@
+PMW Render v45.4 Snip Portrait Max Fit
+
+Built from working v45.3.
+
+Only changes Snip / Print / Email PDF generation:
+- Snip prints in portrait, not landscape.
+- Tight margins.
+- Table uses the maximum available page width.
+- Font size scales larger for smaller snips.
+- Email Schedule and normal Print PDF are unchanged.
+- Schedule date still uses Auto Today / Manual Date setting.
