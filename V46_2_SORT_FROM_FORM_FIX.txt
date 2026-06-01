@@ -1,0 +1,14 @@
+PMW Render v46.2 Sort From Form Fix
+
+Built from v46.1.
+
+Fixes the remaining sort issue:
+- The job cell moved correctly,
+- but the sort number cell could change back to the destination row's old number.
+
+Change:
+- Sort Numbering and Sort Fabrication now sort directly from the current submitted form values.
+- The 3 cells are captured together before any database save:
+  sort number + job/email link + done/notes.
+- The final sorted groups are written once.
+- No pre-save step can overwrite the number cell.

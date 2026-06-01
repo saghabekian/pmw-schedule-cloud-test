@@ -2143,62 +2143,152 @@ def set_schedule_date():
     return redirect('/?sheet=' + urllib.parse.quote(sheet))
 
 
+
+def sort_side_from_submitted_form(sheet, key_col, job_col, note_col):
+    """V46.2: Sort directly from submitted form values and write locked 3-cell groups once."""
+    side_cols = [key_col, job_col, note_col]
+    user = session.get('username','')
+
+    def clean_num(v):
+        raw = str(v or '').strip().replace('\xa0', ' ')
+        cleaned = ''.join(ch for ch in raw if ch.isdigit() or ch in '.-')
+        if cleaned in ('', '.', '-', '-.'):
+            return None
+        try:
+            return float(cleaned)
+        except Exception:
+            return None
+
+    def sort_key(v):
+        n = clean_num(v)
+        if n is not None:
+            return (0, n)
+        raw = str(v or '').strip().lower()
+        if raw == '':
+            return (2, 999999)
+        return (1, raw)
+
+    def form_cell(r, c):
+        return {
+            "value": (request.form.get(f"cell_{r}_{c}") or '').replace('\r',' ').replace('\n',' ').strip(),
+            "bg_color": (request.form.get(f"bg_{r}_{c}") or '').strip(),
+            "text_color": (request.form.get(f"txt_{r}_{c}") or '').strip(),
+            "link_path": (request.form.get(f"link_{r}_{c}") or '').strip(),
+            "link_label": (request.form.get(f"label_{r}_{c}") or '').strip(),
+            "font_size": (request.form.get(f"fsize_{r}_{c}") or '').strip(),
+            "bold": (request.form.get(f"bold_{r}_{c}") or '').strip(),
+            "rich_html": (request.form.get(f"rich_{r}_{c}") or '').strip(),
+        }
+
+    def has_any(group):
+        return any(
+            cell["value"] or cell["bg_color"] or cell["text_color"] or cell["link_path"] or
+            cell["link_label"] or cell["font_size"] or cell["bold"] or cell["rich_html"]
+            for cell in group
+        )
+
+    locked_rows = []
+    for r in range(3,51):
+        group = [form_cell(r, key_col), form_cell(r, job_col), form_cell(r, note_col)]
+        if has_any(group):
+            locked_rows.append((sort_key(group[0]["value"]), r, group))
+
+    # Same numbers keep current top-to-bottom order.
+    locked_rows.sort(key=lambda x: (x[0], x[1]))
+
+    con = db()
+    cur = con.cursor()
+    try:
+        for r in range(3,51):
+            for c in side_cols:
+                upsert_workbook_cell_cur(cur, sheet, r, c, '', '', '', '', '', '', '', '', user)
+
+        target_r = 3
+        for _, old_r, group in locked_rows:
+            for idx, c in enumerate(side_cols):
+                cell = group[idx]
+                upsert_workbook_cell_cur(
+                    cur, sheet, target_r, c,
+                    cell["value"],
+                    cell["bg_color"],
+                    cell["text_color"],
+                    cell["link_path"],
+                    cell["link_label"],
+                    cell["font_size"],
+                    cell["bold"],
+                    cell["rich_html"],
+                    user
+                )
+            target_r += 1
+
+        con.commit()
+    finally:
+        con.close()
+
+
 @app.route('/save_command', methods=['POST'])
 @login_required
 @role_required('editor')
 def save_command():
-    sheet=request.form.get('sheet','Fabrication Schedule')
-    cmd=request.form.get('cmd','save')
-    save_posted_cells(sheet)
-    if cmd=='sort_numbering':
-        sort_side(sheet,1,2,3); log('SORT_NUMBERING',sheet); flash('Numbering sorted.')
-    elif cmd=='sort_fabrication':
-        sort_side(sheet,4,5,6); log('SORT_FABRICATION',sheet); flash('Fabrication sorted.')
-    elif cmd=='clear_schedule':
-        con=db(); con.execute("UPDATE workbook_cells SET value='', bg_color='', text_color='', link_path='', link_label='', font_size='', bold='', rich_html='' WHERE sheet_name=? AND row_num>=3 AND col_num IN (1,2,3,4,5,6)",(sheet,)); con.commit(); con.close(); log('CLEAR_SCHEDULE',sheet); flash('Schedule cleared.')
-    elif cmd=='delete_comments':
-        con=db(); con.execute("UPDATE workbook_cells SET value='', bg_color='', text_color='', link_path='', link_label='', font_size='', bold='', rich_html='' WHERE sheet_name=? AND row_num>=3 AND col_num IN (3,6)",(sheet,)); con.commit(); con.close(); log('DELETE_COMMENTS',sheet); flash('Comments/status cells cleared.')
-    elif cmd=='print_pdf':
-        try:
-            pdf_path = make_schedule_pdf(sheet)
-            reveal_file(pdf_path)
-            log('PRINT_PDF', os.path.basename(pdf_path))
-            flash('Colored schedule PDF created. The folder was opened so you can print it.')
-            return redirect('/email_ready?file=' + urllib.parse.quote(os.path.basename(pdf_path)) + '&sheet=' + urllib.parse.quote(sheet))
-        except Exception as e:
-            log('PRINT_PDF_FAILED', str(e))
-            flash('Print PDF failed: ' + str(e))
-            return redirect('/?sheet='+urllib.parse.quote(sheet))
-    elif cmd=='email_schedule':
-        try:
-            pdf_path = make_schedule_pdf(sheet)
-            ok, msg = open_outlook_draft_with_attachment(pdf_path, sheet)
-            log('EMAIL_SCHEDULE_PDF', os.path.basename(pdf_path) + ' | ' + msg)
-            if ok:
-                flash('PDF created and an Outlook email draft opened with the PDF attached.')
-                return redirect('/?sheet='+urllib.parse.quote(sheet))
-            else:
+    sheet = request.form.get('sheet','Fabrication Schedule')
+    cmd = request.form.get('cmd','save')
+
+    # V46.2: Sort commands use the submitted form directly.
+    # Do not pre-save the old row positions first.
+    if cmd == 'sort_numbering':
+        sort_side_from_submitted_form(sheet,1,2,3)
+        log('SORT_NUMBERING',sheet)
+        flash('Numbering sorted.')
+    elif cmd == 'sort_fabrication':
+        sort_side_from_submitted_form(sheet,4,5,6)
+        log('SORT_FABRICATION',sheet)
+        flash('Fabrication sorted.')
+    else:
+        save_posted_cells(sheet)
+
+        if cmd == 'clear_schedule':
+            con=db()
+            con.execute("UPDATE workbook_cells SET value='', bg_color='', text_color='', link_path='', link_label='', font_size='', bold='', rich_html='' WHERE sheet_name=? AND row_num>=3 AND col_num IN (1,2,3,4,5,6)",(sheet,))
+            con.commit(); con.close()
+            log('CLEAR_SCHEDULE',sheet)
+            flash('Schedule cleared.')
+        elif cmd == 'delete_comments':
+            con=db()
+            con.execute("UPDATE workbook_cells SET value='', bg_color='', text_color='', link_path='', link_label='', font_size='', bold='', rich_html='' WHERE sheet_name=? AND row_num>=3 AND col_num IN (3,6)",(sheet,))
+            con.commit(); con.close()
+            log('DELETE_COMMENTS',sheet)
+            flash('Comments/status cells cleared.')
+        elif cmd == 'print_pdf':
+            try:
+                pdf_path = make_schedule_pdf(sheet)
                 reveal_file(pdf_path)
-                flash('PDF created. Outlook attachment draft did not open, so the PDF folder was opened. Attach the PDF manually if needed. Reason: ' + msg)
-                return redirect('/email_ready?file=' + urllib.parse.quote(os.path.basename(pdf_path)) + '&sheet=' + urllib.parse.quote(sheet))
-        except Exception as e:
-            log('EMAIL_SCHEDULE_PDF_FAILED', str(e))
-            flash('PDF/email failed: ' + str(e))
-            return redirect('/?sheet='+urllib.parse.quote(sheet))
-    elif cmd=='snip_pdf':
-        try:
-            start_row=request.form.get('snip_start','3')
-            end_row=request.form.get('snip_end','12')
-            side=request.form.get('snip_side','both')
-            pdf_path=make_snip_pdf(sheet, start_row, end_row, side)
-            log('SNIP_PDF', os.path.basename(pdf_path))
-            reveal_file(pdf_path)
-            flash('Snip PDF created using the schedule numbers you typed. The folder was opened so you can print or email it.')
-            return redirect('/email_ready?file=' + urllib.parse.quote(os.path.basename(pdf_path)) + '&sheet=' + urllib.parse.quote(sheet))
-        except Exception as e:
-            log('SNIP_PDF_FAILED', str(e))
-            flash('Snip PDF failed: ' + str(e))
-            return redirect('/?sheet='+urllib.parse.quote(sheet))
+                log('PRINT_PDF', os.path.basename(pdf_path))
+                flash('Colored schedule PDF created. The folder was opened so you can print or attach it.')
+            except Exception as e:
+                flash('PDF failed: '+str(e))
+        elif cmd == 'email_schedule':
+            try:
+                pdf_path = make_schedule_pdf(sheet)
+                ok,msg=open_outlook_draft_with_attachment(pdf_path, sheet)
+                log('EMAIL_SCHEDULE', msg)
+                flash(msg if ok else 'Email draft failed: '+msg)
+            except Exception as e:
+                flash('Email PDF failed: '+str(e))
+        elif cmd == 'snip_pdf':
+            try:
+                start_n=request.form.get('snip_start','1')
+                end_n=request.form.get('snip_end','5')
+                side=request.form.get('snip_side','both')
+                pdf_path=make_snip_pdf(sheet,start_n,end_n,side)
+                reveal_file(pdf_path)
+                log('SNIP_PDF', os.path.basename(pdf_path))
+                flash('Snip PDF created. The folder was opened so you can print or email it.')
+            except Exception as e:
+                flash('Snip PDF failed: '+str(e))
+        else:
+            log('SAVE',sheet)
+            flash('Saved.')
+
     return redirect('/?sheet='+urllib.parse.quote(sheet))
 
 
