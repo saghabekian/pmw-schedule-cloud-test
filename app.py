@@ -20,7 +20,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v46.3 Done Button for Viewers"
+APP_VERSION = "v45.5 Snip Auto Fill Page"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -1521,9 +1521,6 @@ BASE = """
   .scheduleDateBox input,.scheduleDateBox button{width:100%;box-sizing:border-box;margin:4px 0}
 }
 
-
-.viewerDoneBar button.green{background:#93d050;border:1px solid #38761d;font-weight:bold;padding:7px 10px}
-
 </style></head><body>
 {% if session.get('user_id') %}<div class='top'><div class='brand'>{{app_name}} <span style='font-size:12px'>{{version}}</span></div><div class='nav'><span>{{session.username}} / {{session.role}}</span><a href='/'>Workbook</a><a href='/tickets'>Tickets</a>{% if can_admin %}<a href='/users'>Users</a><a href='/admin/storage'>Storage</a><a href='/audit'>Audit</a>{% endif %}<a href='/logout'>Logout</a></div></div>{% endif %}
 {% for m in get_flashed_messages() %}<div class='flash'>{{m}}</div>{% endfor %}
@@ -1602,7 +1599,6 @@ def index():
           </form>
         </div>'''
         body += f"<form id='sheetForm' method='post' action='/save_command'><input type='hidden' name='sheet' value='{html.escape(active)}'>"
-    body += "<div class='viewerDoneBar' style='padding:6px 0'><button type='button' class='green' onclick='markSelectedDone()'>Mark Selected Job DONE</button> <span class='small'>Viewers can only use this button to mark the Done cell.</span></div>"
     body += "<div class='sheetline'><div class='sheetwrap'><table class='sheet'><col class='num'><col class='job'><col class='note'><col class='num'><col class='job'><col class='note'>"
     sched_date = get_schedule_date_settings(active)
     datev = sched_date['display_date']
@@ -1634,7 +1630,7 @@ def index():
                 else:
                     body += f"<td style='{style}' data-row='{r}' data-col='{c}'><div class='cellbox'><input class='cellinput {cls}' name='cell_{r}_{c}' data-row='{r}' data-col='{c}' style='{style}' value='{html.escape(v, quote=True)}' autocomplete='off'><input type='hidden' name='bg_{r}_{c}' value='{html.escape(bg, quote=True)}'><input type='hidden' name='txt_{r}_{c}' value='{html.escape(txt, quote=True)}'><input type='hidden' name='link_{r}_{c}' value='{html.escape(link, quote=True)}'><input type='hidden' name='label_{r}_{c}' value='{html.escape(label, quote=True)}'><input type='hidden' name='fsize_{r}_{c}' value='{html.escape(fsize, quote=True)}'><input type='hidden' name='bold_{r}_{c}' value='{html.escape(bold, quote=True)}'><input type='hidden' name='rich_{r}_{c}' value='{html.escape(rich, quote=True)}'>{link_html}</div></td>"
             else:
-                body += f"<td style='{style}' data-row='{r}' data-col='{c}' onclick='selectViewerCell(this)'>{rich if rich else html.escape(v)} {link_html}</td>"
+                body += f"<td style='{style}'>{rich if rich else html.escape(v)} {link_html}</td>"
         body += "</tr>"
     body += "</table></div>"
     if editable:
@@ -2099,43 +2095,6 @@ function clearSelectedCells(){
     try{ if(typeof autosaveCell === 'function') autosaveCell(el); }catch(e){}
   });
 }
-
-function markSelectedDone(){
-  const cell = window.activeCell || document.querySelector('.selectedCell');
-  if(!cell){
-    alert('Click the job row first, then click Mark DONE.');
-    return;
-  }
-  const r = cell.dataset.row;
-  const c = cell.dataset.col;
-  if(!r || !c){
-    alert('Click the job row first, then click Mark DONE.');
-    return;
-  }
-  const f = document.createElement('form');
-  f.method = 'POST';
-  f.action = '/mark_done_cell';
-  const sheetInput = document.querySelector('input[name="sheet"]');
-  const sheet = sheetInput ? sheetInput.value : 'Fabrication Schedule';
-  const fields = {sheet: sheet, row: r, col: c};
-  for(const k in fields){
-    const i=document.createElement('input');
-    i.type='hidden';
-    i.name=k;
-    i.value=fields[k];
-    f.appendChild(i);
-  }
-  document.body.appendChild(f);
-  f.submit();
-}
-
-
-function selectViewerCell(td){
-  document.querySelectorAll('.selectedCell').forEach(x=>x.classList.remove('selectedCell'));
-  td.classList.add('selectedCell');
-  window.activeCell = td;
-}
-
 </script>
 </form>"""
     body += "</div>"
@@ -2265,66 +2224,6 @@ def sort_side_from_submitted_form(sheet, key_col, job_col, note_col):
         con.commit()
     finally:
         con.close()
-
-
-
-@app.route('/mark_done_cell', methods=['POST'])
-@login_required
-def mark_done_cell():
-    """Allow editors AND viewers to check only the Done/Notes cell next to a selected job.
-
-    Viewers cannot edit normal cells, but they can mark DONE using this route.
-    """
-    sheet = request.form.get('sheet','Fabrication Schedule')
-    try:
-        row = int(request.form.get('row','0') or 0)
-        col = int(request.form.get('col','0') or 0)
-    except Exception:
-        flash('Select a valid job row first.')
-        return redirect('/?sheet='+urllib.parse.quote(sheet))
-
-    if row < 3 or row > 50:
-        flash('Select a valid schedule row first.')
-        return redirect('/?sheet='+urllib.parse.quote(sheet))
-
-    # User may select the job cell or the done cell.
-    # Numbering side: job col 2 -> done col 3.
-    # Fabrication side: job col 5 -> done col 6.
-    if col in (1,2,3):
-        done_col = 3
-        job_col = 2
-    elif col in (4,5,6):
-        done_col = 6
-        job_col = 5
-    else:
-        flash('Select a job or done cell first.')
-        return redirect('/?sheet='+urllib.parse.quote(sheet))
-
-    con = db()
-    job = con.execute("SELECT value,link_path FROM workbook_cells WHERE sheet_name=? AND row_num=? AND col_num=?",
-                      (sheet,row,job_col)).fetchone()
-    con.close()
-
-    if not job or not ((job['value'] or '').strip() or (job['link_path'] or '').strip()):
-        flash('Select a row with a job first.')
-        return redirect('/?sheet='+urllib.parse.quote(sheet))
-
-    # Viewer-safe write: only the done/status column can be changed.
-    upsert_workbook_cell(
-        sheet,row,done_col,
-        'DONE',
-        '#93d050',
-        '',
-        '',
-        '',
-        '',
-        '1',
-        '',
-        session.get('username','')
-    )
-    log('MARK_DONE', f'{sheet} R{row} C{done_col}')
-    flash('Marked DONE.')
-    return redirect('/?sheet='+urllib.parse.quote(sheet))
 
 
 @app.route('/save_command', methods=['POST'])
@@ -3664,7 +3563,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v46.3 Done Button for Viewers')
+    print('PMW Ticket + Fabrication APP v45.5 Snip Auto Fill Page')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
