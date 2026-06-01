@@ -20,7 +20,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v45.4 Snip Portrait Max Fit"
+APP_VERSION = "v45.5 Snip Auto Fill Page"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -910,10 +910,10 @@ def schedule_numbers_to_rows(sheet, side, start_num, end_num):
     return sorted(set(rows))
 
 def make_snip_pdf(sheet, start_row, end_row, side):
-    """v45.4: Create a portrait PDF snip that uses as much page space as possible.
+    """v45.5: Portrait snip that auto-fills the whole page.
 
-    Only affects Snip / Print / Email output.
-    Email Schedule and normal Print PDF are unchanged.
+    Only affects Snip / Print / Email PDF generation.
+    It scales row height and text based on how many rows are included.
     """
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import letter
@@ -940,51 +940,71 @@ def make_snip_pdf(sheet, start_row, end_row, side):
     filename = f"PMW_Snip_{safe_sheet}_{side}_{start_row}-{end_row}_{stamp}.pdf"
     path = os.path.join(EXPORT_FOLDER, filename)
 
-    # Portrait page with tight margins so the snip prints large.
-    page_w, page_h = letter
-    margin = 0.22 * inch
+    page_w, page_h = letter  # portrait
+    margin = 0.18 * inch
     content_w = page_w - (2 * margin)
 
     if side == "numbering":
         cols = [1, 2, 3]
         headers = ['#', 'NUMBERING', 'DONE']
-        widths = [0.48 * inch, content_w - (0.48 * inch + 0.70 * inch), 0.70 * inch]
+        widths = [0.45 * inch, content_w - (0.45 * inch + 0.60 * inch), 0.60 * inch]
     elif side == "fabrication":
         cols = [4, 5, 6]
         headers = ['#', 'FABRICATION', 'DONE']
-        widths = [0.48 * inch, content_w - (0.48 * inch + 0.70 * inch), 0.70 * inch]
+        widths = [0.45 * inch, content_w - (0.45 * inch + 0.60 * inch), 0.60 * inch]
     else:
-        # Both sides in portrait. Narrow notes columns but still use full width.
         cols = DISPLAY_COLS
         headers = ['#', 'NUMBERING', 'DONE', '#', 'FABRICATION', 'DONE']
-        widths = [0.34 * inch, 3.05 * inch, 0.48 * inch, 0.34 * inch, 3.05 * inch, 0.48 * inch]
+        widths = [0.32 * inch, 3.08 * inch, 0.42 * inch, 0.32 * inch, 3.08 * inch, 0.42 * inch]
 
-    # Use larger font when fewer rows are selected, smaller only when needed.
-    row_count_guess = max(1, len(selected_rows))
-    if row_count_guess <= 8:
-        cell_font = 13
-        leading = 15
-        header_font = 13
-    elif row_count_guess <= 14:
-        cell_font = 11
-        leading = 13
-        header_font = 12
-    elif row_count_guess <= 22:
-        cell_font = 9.5
-        leading = 11
-        header_font = 10.5
-    else:
-        cell_font = 8
-        leading = 9.3
-        header_font = 9
+    # First collect rows so we know how many actually print.
+    row_source = []
+    raw_values = []
+    for r in selected_rows:
+        vals = []
+        has = False
+        for c in cols:
+            m = meta.get((r, c), {})
+            txt = str(m.get("value", ""))
+            if m.get("link_path"):
+                txt = "✉ " + txt
+            if txt.strip() or m.get("bg_color") or m.get("text_color"):
+                has = True
+            vals.append(txt)
+        if has:
+            raw_values.append(vals)
+            row_source.append(r)
+
+    if not raw_values:
+        raw_values = [['' for _ in headers]]
+
+    printed_rows = len(raw_values)
+
+    # Calculate row height so the table fills nearly the full portrait page.
+    top_reserved = 0.72 * inch  # title/date/spacer area
+    available_table_h = page_h - (2 * margin) - top_reserved
+
+    # Header gets a little less height than data rows.
+    data_row_h = available_table_h / max(1, printed_rows + 0.85)
+    data_row_h = max(0.38 * inch, min(data_row_h, 0.92 * inch))
+    header_h = max(0.34 * inch, min(data_row_h * 0.85, 0.55 * inch))
+    row_heights = [header_h] + [data_row_h for _ in range(printed_rows)]
+
+    # Larger font for fewer rows, automatically scaled by row height.
+    # This keeps 1-12 row snips big for the shop, while larger snips still fit.
+    cell_font = max(8.5, min(18.5, data_row_h * 0.28))
+    leading = cell_font + 2.2
+    header_font = max(9, min(18, header_h * 0.36))
+    title_font = 19
+    date_font = 13
 
     doc = SimpleDocTemplate(
         path,
-        pagesize=letter,   # portrait
+        pagesize=letter,
         rightMargin=margin,
         leftMargin=margin,
-        topMargin=0.20 * inch,
-        bottomMargin=0.20 * inch
+        topMargin=0.16 * inch,
+        bottomMargin=0.16 * inch
     )
 
     styles = getSampleStyleSheet()
@@ -993,18 +1013,18 @@ def make_snip_pdf(sheet, start_row, end_row, side):
         parent=styles['Heading1'],
         alignment=1,
         fontName='Helvetica-Bold',
-        fontSize=17,
-        leading=19,
-        spaceAfter=1
+        fontSize=title_font,
+        leading=title_font + 1,
+        spaceAfter=0
     )
     date_style = ParagraphStyle(
         'SnipDate',
         parent=styles['Normal'],
         alignment=1,
         fontName='Helvetica-Bold',
-        fontSize=12,
-        leading=14,
-        spaceAfter=4
+        fontSize=date_font,
+        leading=date_font + 1,
+        spaceAfter=2
     )
     cell_style = ParagraphStyle(
         'SnipCell',
@@ -1029,46 +1049,28 @@ def make_snip_pdf(sheet, start_row, end_row, side):
     story = [
         Paragraph(html.escape(title), title_style),
         Paragraph(html.escape(datev), date_style),
-        Spacer(1, 2)
+        Spacer(1, 1)
     ]
 
     data = [[Paragraph(h, head_style) for h in headers]]
-    row_source = []
+    for vals in raw_values:
+        data.append([Paragraph(html.escape(v), cell_style) for v in vals])
 
-    for r in selected_rows:
-        vals = []
-        has = False
-        for c in cols:
-            m = meta.get((r, c), {})
-            txt = str(m.get("value", ""))
-            if m.get("link_path"):
-                txt = "✉ " + txt
-            if txt.strip() or m.get("bg_color") or m.get("text_color"):
-                has = True
-            vals.append(Paragraph(html.escape(txt), cell_style))
-        if has:
-            data.append(vals)
-            row_source.append(r)
-
-    if len(data) == 1:
-        data.append([Paragraph('', cell_style) for _ in headers])
-
-    tbl = Table(data, colWidths=widths, repeatRows=1, hAlign='CENTER')
+    tbl = Table(data, colWidths=widths, rowHeights=row_heights, repeatRows=1, hAlign='CENTER')
 
     style_cmds = [
-        ('GRID', (0, 0), (-1, -1), 0.75, colors.black),
+        ('GRID', (0, 0), (-1, -1), 0.85, colors.black),
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#d9ead3')),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('ALIGN', (0, 0), (0, -1), 'CENTER'),
         ('ALIGN', (-1, 0), (-1, -1), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
         ('LEFTPADDING', (0, 0), (-1, -1), 4),
         ('RIGHTPADDING', (0, 0), (-1, -1), 4),
     ]
 
-    # For both-sides snips, center both number/done columns.
     if len(cols) == 6:
         for center_col in [0, 2, 3, 5]:
             style_cmds.append(('ALIGN', (center_col, 0), (center_col, -1), 'CENTER'))
@@ -1078,8 +1080,8 @@ def make_snip_pdf(sheet, start_row, end_row, side):
             m = meta.get((sheet_row, c), {})
             bg = (m.get("bg_color") or "").strip()
             txt = (m.get("text_color") or "").strip()
-            fsize = (m.get("font_size") or "").strip()
             bold = (m.get("bold") or "").strip()
+            # Do not let small manual font sizes shrink the snip; this is for shop visibility.
             if bg:
                 try:
                     style_cmds.append(('BACKGROUND', (ci, pdf_row), (ci, pdf_row), colors.HexColor(bg)))
@@ -1088,13 +1090,6 @@ def make_snip_pdf(sheet, start_row, end_row, side):
             if txt:
                 try:
                     style_cmds.append(('TEXTCOLOR', (ci, pdf_row), (ci, pdf_row), colors.HexColor(txt)))
-                except Exception:
-                    pass
-            # Keep user font-size only if not smaller than the auto-fit font.
-            if fsize:
-                try:
-                    fs = max(float(fsize), cell_font)
-                    style_cmds.append(('FONTSIZE', (ci, pdf_row), (ci, pdf_row), fs))
                 except Exception:
                     pass
             if bold:
@@ -1135,7 +1130,7 @@ def reveal_file(path):
 
 def cloud_notice_banner():
     if os.environ.get("RENDER"):
-        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Snip Portrait Max Fit: old database columns are upgraded automatically on startup.</div>"
+        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Snip Auto Fill Page: old database columns are upgraded automatically on startup.</div>"
     return ""
 
 
@@ -3382,7 +3377,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v45.4 Snip Portrait Max Fit')
+    print('PMW Ticket + Fabrication APP v45.5 Snip Auto Fill Page')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)

@@ -1,0 +1,11 @@
+PMW Render v45.5 Snip Auto Fill Page
+
+Built from v45.4.
+
+Only changes Snip / Print / Email PDF generation:
+- Portrait page remains.
+- Snip table auto-fills the page height.
+- Row heights expand based on how many rows are selected.
+- Font size automatically gets bigger for smaller snips.
+- Ignores tiny manual cell font sizes in the snip so shop printouts are easier to see.
+- Email Schedule and normal Print PDF are unchanged.
