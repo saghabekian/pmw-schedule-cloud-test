@@ -1,0 +1,17 @@
+PMW Render v46.3 Done Button for Viewers
+
+Built from v46.2/v46.1 base.
+
+Changes:
+1. Fixes visible version badge text to v46.3 Done Button for Viewers.
+2. Adds Mark Selected Job DONE button.
+3. Viewers and editors can use Mark DONE.
+4. Viewer role still cannot edit normal schedule cells.
+5. Mark DONE only writes to the Done/Notes column beside the selected job:
+   - Numbering side -> column 3
+   - Fabrication side -> column 6
+6. It writes DONE with green background.
+
+How to use:
+- Click any cell in the job's row.
+- Click Mark Selected Job DONE.
