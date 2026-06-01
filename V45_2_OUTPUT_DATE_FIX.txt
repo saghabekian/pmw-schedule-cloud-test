@@ -1,0 +1,17 @@
+PMW Render v45.2 Output Date Fix
+
+Built from v45.1.
+
+Fixes:
+- Email Schedule
+- Print PDF
+- Snip / Print / Email
+- Browser/print outputs
+
+They now use the same schedule date setting as the main page:
+- Auto Today
+- Manual Date override
+
+Technical:
+- Replaced old worksheet date-cell fallback in output routes with get_schedule_date_settings(...).
+- Number of date replacements made: 2
