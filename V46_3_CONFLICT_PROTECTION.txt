@@ -1,0 +1,9 @@
+PMW Render v46.3 Conflict Protection
+
+Adds optimistic conflict protection to autosave:
+- Each cell carries the database updated_at timestamp from when the page loaded.
+- Autosave sends that loaded_at timestamp.
+- Server refuses to save if another user changed the cell after this page loaded.
+- User gets an alert and the page refreshes instead of overwriting newer data.
+
+Keeps v46.2 auto refresh behavior.

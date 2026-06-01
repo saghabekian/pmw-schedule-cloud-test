@@ -1626,9 +1626,9 @@ def index():
             if editable:
                 cls = 'numinput' if c in (1,4) else ('jobinput' if c in (2,5) else 'noteinput')
                 if rich:
-                    body += f"<td style='{style}' data-row='{r}' data-col='{c}'><div class='cellbox'><div class='cellinput richCell' contenteditable='true' data-row='{r}' data-col='{c}' style='{style}'>{rich}</div><input class='plainHidden' name='cell_{r}_{c}' data-row='{r}' data-col='{c}' value='{html.escape(v, quote=True)}' autocomplete='off'><input type='hidden' name='bg_{r}_{c}' value='{html.escape(bg, quote=True)}'><input type='hidden' name='txt_{r}_{c}' value='{html.escape(txt, quote=True)}'><input type='hidden' name='link_{r}_{c}' value='{html.escape(link, quote=True)}'><input type='hidden' name='label_{r}_{c}' value='{html.escape(label, quote=True)}'><input type='hidden' name='fsize_{r}_{c}' value='{html.escape(fsize, quote=True)}'><input type='hidden' name='bold_{r}_{c}' value='{html.escape(bold, quote=True)}'><input type='hidden' name='rich_{r}_{c}' value='{html.escape(rich, quote=True)}'>{link_html}</div></td>"
+                    body += f"<td style='{style}' data-row='{r}' data-col='{c}'><div class='cellbox'><div class='cellinput richCell' contenteditable='true' data-row='{r}' data-col='{c}' style='{style}'>{rich}</div><input class='plainHidden' name='cell_{r}_{c}' data-row='{r}' data-col='{c}' value='{html.escape(v, quote=True)}' autocomplete='off'><input type='hidden' name='bg_{r}_{c}' value='{html.escape(bg, quote=True)}'><input type='hidden' name='txt_{r}_{c}' value='{html.escape(txt, quote=True)}'><input type='hidden' name='link_{r}_{c}' value='{html.escape(link, quote=True)}'><input type='hidden' name='label_{r}_{c}' value='{html.escape(label, quote=True)}'><input type='hidden' name='fsize_{r}_{c}' value='{html.escape(fsize, quote=True)}'><input type='hidden' name='bold_{r}_{c}' value='{html.escape(bold, quote=True)}'><input type='hidden' name='rich_{r}_{c}' value='{html.escape(rich, quote=True)}'><input type='hidden' name='loaded_{r}_{c}' value='{html.escape(m.get('updated_at','') or '', quote=True)}'>{link_html}</div></td>"
                 else:
-                    body += f"<td style='{style}' data-row='{r}' data-col='{c}'><div class='cellbox'><input class='cellinput {cls}' name='cell_{r}_{c}' data-row='{r}' data-col='{c}' style='{style}' value='{html.escape(v, quote=True)}' autocomplete='off'><input type='hidden' name='bg_{r}_{c}' value='{html.escape(bg, quote=True)}'><input type='hidden' name='txt_{r}_{c}' value='{html.escape(txt, quote=True)}'><input type='hidden' name='link_{r}_{c}' value='{html.escape(link, quote=True)}'><input type='hidden' name='label_{r}_{c}' value='{html.escape(label, quote=True)}'><input type='hidden' name='fsize_{r}_{c}' value='{html.escape(fsize, quote=True)}'><input type='hidden' name='bold_{r}_{c}' value='{html.escape(bold, quote=True)}'><input type='hidden' name='rich_{r}_{c}' value='{html.escape(rich, quote=True)}'>{link_html}</div></td>"
+                    body += f"<td style='{style}' data-row='{r}' data-col='{c}'><div class='cellbox'><input class='cellinput {cls}' name='cell_{r}_{c}' data-row='{r}' data-col='{c}' style='{style}' value='{html.escape(v, quote=True)}' autocomplete='off'><input type='hidden' name='bg_{r}_{c}' value='{html.escape(bg, quote=True)}'><input type='hidden' name='txt_{r}_{c}' value='{html.escape(txt, quote=True)}'><input type='hidden' name='link_{r}_{c}' value='{html.escape(link, quote=True)}'><input type='hidden' name='label_{r}_{c}' value='{html.escape(label, quote=True)}'><input type='hidden' name='fsize_{r}_{c}' value='{html.escape(fsize, quote=True)}'><input type='hidden' name='bold_{r}_{c}' value='{html.escape(bold, quote=True)}'><input type='hidden' name='rich_{r}_{c}' value='{html.escape(rich, quote=True)}'><input type='hidden' name='loaded_{r}_{c}' value='{html.escape(m.get('updated_at','') or '', quote=True)}'>{link_html}</div></td>"
             else:
                 body += f"<td style='{style}'>{rich if rich else html.escape(v)} {link_html}</td>"
         body += "</tr>"
@@ -1975,7 +1975,8 @@ function autosaveCell(el){
       link_label: getHiddenVal(`label_${r}_${c}`),
       font_size: getHiddenVal(`fsize_${r}_${c}`),
       bold: getHiddenVal(`bold_${r}_${c}`),
-      rich_html: richHtmlFromCell(el)
+      rich_html: richHtmlFromCell(el),
+      loaded_at: getHiddenVal(`loaded_${r}_${c}`)
     };
     showSaveStatus('Saving...');
     fetch('/autosave_cell', {
@@ -1983,7 +1984,17 @@ function autosaveCell(el){
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify(payload)
     }).then(r=>r.json()).then(j=>{
-      showSaveStatus(j.ok ? 'Saved' : 'Save failed');
+      if(j.ok){
+        showSaveStatus('Saved');
+        const loaded=document.querySelector(`input[name="loaded_${payload.row}_${payload.col}"]`);
+        if(loaded && j.saved_at){ loaded.value = j.saved_at; }
+      }else if(j.conflict){
+        showSaveStatus('Conflict - refresh needed');
+        alert('This cell was changed by another user after your page loaded. Your change was NOT saved. The page will refresh so you can see the latest schedule.');
+        window.location.reload();
+      }else{
+        showSaveStatus('Save failed');
+      }
     }).catch(()=>showSaveStatus('Save failed'));
   }, 450);
 }
@@ -3064,9 +3075,44 @@ def autosave_cell():
     fsize = (data.get('font_size') or '').strip()
     bold = (data.get('bold') or '').strip()
     rich = (data.get('rich_html') or '').strip()
+    loaded_at = (data.get('loaded_at') or '').strip()
     now = datetime.now().isoformat(timespec='seconds')
 
     con = db()
+    current = con.execute("SELECT updated_at, updated_by, value FROM workbook_cells WHERE sheet_name=? AND row_num=? AND col_num=?", (sheet,r,c)).fetchone()
+    current_at = ''
+    current_by = ''
+    if current:
+        try:
+            current_at = current['updated_at'] or ''
+            current_by = current['updated_by'] or ''
+        except Exception:
+            current_at = ''
+            current_by = ''
+
+    # Conflict protection:
+    # If the browser loaded an older copy of this cell, do not let it overwrite a newer database value.
+    if current_at and loaded_at and current_at != loaded_at:
+        con.close()
+        return jsonify({
+            "ok": False,
+            "conflict": True,
+            "error": "Cell changed by another user. Refresh required.",
+            "current_updated_at": current_at,
+            "current_updated_by": current_by
+        }), 409
+
+    # If the page had no timestamp but DB already has one, allow only if the cell is effectively new/blank page case.
+    if current_at and not loaded_at:
+        con.close()
+        return jsonify({
+            "ok": False,
+            "conflict": True,
+            "error": "Stale page with no cell timestamp. Refresh required.",
+            "current_updated_at": current_at,
+            "current_updated_by": current_by
+        }), 409
+
     con.execute("""INSERT OR REPLACE INTO workbook_cells(
         sheet_name,row_num,col_num,value,bg_color,text_color,link_path,link_label,font_size,bold,rich_html,updated_by,updated_at)
         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
