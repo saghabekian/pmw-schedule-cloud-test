@@ -1,0 +1,12 @@
+PMW Render v46.1 Ticket Badge Fix
+
+Fixes:
+- Tickets page crash:
+  NameError: name 'ticket_scheduled_badge' is not defined
+
+Keeps:
+- Ticket scheduled status tracking
+- Snip auto-fill
+- Date control
+- Sort behavior
+- Outlook auto-upload

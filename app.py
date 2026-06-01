@@ -2741,6 +2741,92 @@ def clear_cell():
     return redirect('/?sheet='+urllib.parse.quote(sheet))
 
 
+
+# ===== TICKET SCHEDULED STATUS v46.1 FIX =====
+def upgrade_ticket_schedule_status_columns():
+    """Track when a ticket has been added to Fabrication or Numbering."""
+    try:
+        con = db()
+        cur = con.cursor()
+        columns = [
+            ("scheduled_status", "TEXT DEFAULT ''"),
+            ("scheduled_side", "TEXT DEFAULT ''"),
+            ("scheduled_sheet", "TEXT DEFAULT ''"),
+            ("scheduled_row", "INTEGER DEFAULT 0"),
+            ("scheduled_by", "TEXT DEFAULT ''"),
+            ("scheduled_at", "TEXT DEFAULT ''"),
+        ]
+        for name, ddl in columns:
+            try:
+                cur.execute(f"ALTER TABLE ticket_links ADD COLUMN {name} {ddl}")
+                try:
+                    con.commit()
+                except Exception:
+                    pass
+            except Exception:
+                try:
+                    if USE_POSTGRES:
+                        con.con.rollback()
+                except Exception:
+                    pass
+        con.commit()
+        con.close()
+    except Exception as e:
+        print("Ticket scheduled status upgrade failed:", repr(e))
+
+def mark_ticket_scheduled(ticket_id, side, sheet, row_num):
+    try:
+        upgrade_ticket_schedule_status_columns()
+        con = db()
+        side_label = "Fabrication" if side == "fabrication" else "Numbering"
+        now = datetime.now().isoformat(timespec='seconds')
+        con.execute("""UPDATE ticket_links
+                       SET scheduled_status=?, scheduled_side=?, scheduled_sheet=?, scheduled_row=?,
+                           scheduled_by=?, scheduled_at=?
+                       WHERE id=?""",
+                    ("scheduled", side_label, sheet, int(row_num or 0), session.get('username',''), now, ticket_id))
+        con.commit()
+        con.close()
+    except Exception as e:
+        print("mark_ticket_scheduled failed:", repr(e))
+
+def ticket_scheduled_badge(row):
+    """Return HTML showing whether ticket has already been added to schedule."""
+    try:
+        status = row["scheduled_status"] or ""
+    except Exception:
+        status = ""
+    if status == "scheduled":
+        try:
+            side = row["scheduled_side"] or ""
+        except Exception:
+            side = ""
+        try:
+            sched_row = row["scheduled_row"] or ""
+        except Exception:
+            sched_row = ""
+        try:
+            by = row["scheduled_by"] or ""
+        except Exception:
+            by = ""
+        try:
+            at = row["scheduled_at"] or ""
+        except Exception:
+            at = ""
+
+        detail = side or "Schedule"
+        if sched_row:
+            detail += f" row {sched_row}"
+        if by:
+            detail += f" by {html.escape(str(by))}"
+        if at:
+            detail += f" on {html.escape(str(at).replace('T',' '))}"
+
+        return f"<span style='color:#0f7b2f;font-weight:bold'>✓ Added to {html.escape(detail)}</span>"
+
+    return "<span style='color:#9a6700;font-weight:bold'>Not Scheduled</span>"
+
+
 @app.route('/tickets')
 @login_required
 def tickets():
@@ -3348,6 +3434,7 @@ def startup_init_for_cloud():
     try:
         print("PMW DB MODE:", "PostgreSQL" if USE_POSTGRES else "SQLite", "DATABASE_URL set:", bool(DATABASE_URL), "psycopg:", bool(psycopg))
         init_db()
+        upgrade_ticket_schedule_status_columns()
         upgrade_schedule_settings_table()
         upgrade_ticket_cloud_columns()
         upgrade_ticket_preview_columns()
