@@ -1,0 +1,22 @@
+PMW Render v45.1 Schedule Date Option C
+
+Built from stable v44.
+
+Fixes previous v45 crash:
+- get_schedule_date_settings is now included before the index page calls it.
+
+Adds Option C:
+- Auto Today by default.
+- Change Date button.
+- Manual Date override.
+- Setting is saved in PostgreSQL per schedule sheet.
+- Switching back to Auto Today makes the date update automatically each day.
+
+Test:
+1. Deploy.
+2. Confirm app loads.
+3. Confirm top schedule date shows today.
+4. Click Change Date.
+5. Save manual date.
+6. Refresh.
+7. Switch back to Auto Today.

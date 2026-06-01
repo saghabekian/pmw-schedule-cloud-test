@@ -20,7 +20,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v44 Simple Locked Row Sort"
+APP_VERSION = "v45.1 Schedule Date Option C"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -1042,7 +1042,7 @@ def reveal_file(path):
 
 def cloud_notice_banner():
     if os.environ.get("RENDER"):
-        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Simple Locked Row Sort: old database columns are upgraded automatically on startup.</div>"
+        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Schedule Date Option C: old database columns are upgraded automatically on startup.</div>"
     return ""
 
 
@@ -1405,6 +1405,32 @@ BASE = """
     font-size:14px;
     line-height:1.35;
   }
+}
+
+
+/* ===== v45.1 Schedule Date Control ===== */
+.scheduleDateBox{
+  background:#ffffff;
+  border:1px solid #999;
+  padding:8px 10px;
+  margin:6px 0 10px 0;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.scheduleDateTitle{
+  font-size:18px;
+  font-weight:bold;
+  color:#073763;
+  margin-right:8px;
+}
+.scheduleDateBox input[type=date]{padding:6px}
+.scheduleDateBox button{padding:7px 10px}
+@media(max-width:800px){
+  .scheduleDateBox{display:block}
+  .scheduleDateTitle{display:block;margin-bottom:8px}
+  .scheduleDateBox input,.scheduleDateBox button{width:100%;box-sizing:border-box;margin:4px 0}
 }
 
 </style></head><body>
@@ -1985,6 +2011,49 @@ function clearSelectedCells(){
 </form>"""
     body += "</div>"
     return page(body)
+
+
+@app.route('/set_schedule_date', methods=['POST'])
+@login_required
+@role_required('editor')
+def set_schedule_date():
+    sheet = request.form.get('sheet') or 'Fabrication Schedule'
+    mode = request.form.get('date_mode') or 'auto'
+    chosen_date = (request.form.get('schedule_date') or '').strip()
+
+    auto_today = 1 if mode == 'auto' else 0
+
+    if auto_today:
+        chosen_date = datetime.now().strftime("%Y-%m-%d")
+    else:
+        try:
+            datetime.strptime(chosen_date, "%Y-%m-%d")
+        except Exception:
+            flash("Please choose a valid schedule date.")
+            return redirect('/?sheet=' + urllib.parse.quote(sheet))
+
+    upgrade_schedule_settings_table()
+    con = db()
+    if USE_POSTGRES:
+        con.execute("""INSERT INTO schedule_settings(sheet_name,schedule_date,auto_today,updated_by,updated_at)
+                       VALUES(?,?,?,?,?)
+                       ON CONFLICT(sheet_name) DO UPDATE SET
+                         schedule_date=EXCLUDED.schedule_date,
+                         auto_today=EXCLUDED.auto_today,
+                         updated_by=EXCLUDED.updated_by,
+                         updated_at=EXCLUDED.updated_at""",
+                    (sheet, chosen_date, auto_today, session.get('username',''), datetime.now().isoformat(timespec='seconds')))
+    else:
+        con.execute("""INSERT OR REPLACE INTO schedule_settings(sheet_name,schedule_date,auto_today,updated_by,updated_at)
+                       VALUES(?,?,?,?,?)""",
+                    (sheet, chosen_date, auto_today, session.get('username',''), datetime.now().isoformat(timespec='seconds')))
+    con.commit()
+    con.close()
+
+    log('SET_SCHEDULE_DATE', f'{sheet} {chosen_date} auto={auto_today}')
+    flash("Schedule date updated.")
+    return redirect('/?sheet=' + urllib.parse.quote(sheet))
+
 
 @app.route('/save_command', methods=['POST'])
 @login_required
@@ -3123,10 +3192,66 @@ def upgrade_ticket_cloud_columns():
         print("Ticket cloud column upgrade failed:", repr(e))
 
 
+
+# ===== SCHEDULE DATE CONTROL v45.1 =====
+def upgrade_schedule_settings_table():
+    try:
+        con = db()
+        cur = con.cursor()
+        cur.execute("""CREATE TABLE IF NOT EXISTS schedule_settings(
+            sheet_name TEXT PRIMARY KEY,
+            schedule_date TEXT DEFAULT '',
+            auto_today INTEGER DEFAULT 1,
+            updated_by TEXT DEFAULT '',
+            updated_at TEXT DEFAULT ''
+        )""")
+        con.commit()
+        con.close()
+    except Exception as e:
+        print("Schedule settings upgrade failed:", repr(e))
+
+def pretty_schedule_date(raw):
+    try:
+        dt = datetime.strptime(raw, "%Y-%m-%d")
+        return dt.strftime("%A, %B %d, %Y").replace(" 0", " ")
+    except Exception:
+        return raw or datetime.now().strftime("%A, %B %d, %Y").replace(" 0", " ")
+
+def get_schedule_date_settings(sheet):
+    try:
+        upgrade_schedule_settings_table()
+        con = db()
+        row = con.execute("SELECT schedule_date, auto_today FROM schedule_settings WHERE sheet_name=?", (sheet,)).fetchone()
+        con.close()
+    except Exception:
+        row = None
+
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    if not row:
+        schedule_date = today
+        auto_today = 1
+    else:
+        try:
+            auto_today = int(row["auto_today"] or 0)
+        except Exception:
+            auto_today = 1
+        schedule_date = (row["schedule_date"] or "").strip()
+        if auto_today or not schedule_date:
+            schedule_date = today
+
+    return {
+        "schedule_date": schedule_date,
+        "auto_today": auto_today,
+        "display_date": pretty_schedule_date(schedule_date)
+    }
+
+
 def startup_init_for_cloud():
     try:
         print("PMW DB MODE:", "PostgreSQL" if USE_POSTGRES else "SQLite", "DATABASE_URL set:", bool(DATABASE_URL), "psycopg:", bool(psycopg))
         init_db()
+        upgrade_schedule_settings_table()
         upgrade_ticket_cloud_columns()
         upgrade_ticket_preview_columns()
         upgrade_ticket_attachment_tables()
@@ -3164,7 +3289,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v44 Simple Locked Row Sort')
+    print('PMW Ticket + Fabrication APP v45.1 Schedule Date Option C')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
