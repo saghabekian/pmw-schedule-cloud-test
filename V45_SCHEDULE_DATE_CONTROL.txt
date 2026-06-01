@@ -1,0 +1,18 @@
+PMW Render v45 Schedule Date Control
+
+Built from stable v44.
+
+Adds:
+- Schedule date at the top uses today's date automatically by default.
+- Admin/editor can click Change Date.
+- Choose Auto Today or Manual Date.
+- Manual date is saved in PostgreSQL per schedule sheet.
+- Auto Today updates to the current date automatically.
+
+Test:
+1. Deploy v45.
+2. Confirm top date shows today's date.
+3. Click Change Date.
+4. Choose Manual Date and save.
+5. Refresh and confirm it stays.
+6. Switch back to Auto Today and confirm it shows current date.

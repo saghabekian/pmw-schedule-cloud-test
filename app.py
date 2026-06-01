@@ -20,7 +20,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v43 True Row Group Sort"
+APP_VERSION = "v44 Simple Locked Row Sort"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -647,48 +647,36 @@ def save_posted_cells(sheet):
 
 
 def sort_side(sheet, key_col, job_col, note_col):
-    """V43: True row-group sort.
+    """V44 SIMPLE LOCKED ROW SORT
 
-    Correct PMW behavior:
-    - The left number cell stays attached to its job.
-    - The job/description/email link cell stays attached to that number.
-    - The done/notes cell stays attached too.
-    - Sort by the left number cell only.
-    - Do not renumber.
-    - Do not sort by job text.
+    This intentionally does only one simple thing:
+    - Lock 3 cells together from each row:
+        key/order number + job/description/email-link + note/done
+    - Sort those locked rows by the key/order number.
+    - Delete the old side rows.
+    - Reinsert the locked rows.
+
+    It does NOT renumber.
+    It does NOT sort by job name.
+    It does NOT reuse destination-row numbers.
     """
     side_cols = [key_col, job_col, note_col]
+    user = session.get('username','')
     con = db()
     cur = con.cursor()
-    user = session.get('username','')
 
-    def clean_num(v):
-        st = str(v or '').strip()
-        st = st.replace('\xa0', ' ')
-        st = st.replace(',', '')
-        cleaned = ''.join(ch for ch in st if ch.isdigit() or ch in '.-')
-        if cleaned in ('', '.', '-', '-.'):
-            return None
-        try:
-            return float(cleaned)
-        except Exception:
-            return None
-
-    def sort_key(v):
-        n = clean_num(v)
-        if n is not None:
-            return (0, n)
-        st = str(v or '').strip().lower()
-        if st == '':
-            return (2, 999999)
-        return (1, st)
-
-    def get_cell(r, c):
-        row = cur.execute("""SELECT value,bg_color,text_color,link_path,link_label,font_size,bold,rich_html
-                             FROM workbook_cells
-                             WHERE sheet_name=? AND row_num=? AND col_num=?""", (sheet,r,c)).fetchone()
+    def cell_dict(row):
         if not row:
-            return {"value":"","bg_color":"","text_color":"","link_path":"","link_label":"","font_size":"","bold":"","rich_html":""}
+            return {
+                "value": "",
+                "bg_color": "",
+                "text_color": "",
+                "link_path": "",
+                "link_label": "",
+                "font_size": "",
+                "bold": "",
+                "rich_html": ""
+            }
         return {
             "value": row["value"] or "",
             "bg_color": row["bg_color"] or "",
@@ -700,49 +688,85 @@ def sort_side(sheet, key_col, job_col, note_col):
             "rich_html": row["rich_html"] or ""
         }
 
+    def get_cell(r, c):
+        row = cur.execute("""SELECT value,bg_color,text_color,link_path,link_label,font_size,bold,rich_html
+                             FROM workbook_cells
+                             WHERE sheet_name=? AND row_num=? AND col_num=?""",
+                          (sheet, r, c)).fetchone()
+        return cell_dict(row)
+
+    def has_data(group):
+        for cell in group:
+            if (
+                cell["value"].strip()
+                or cell["bg_color"].strip()
+                or cell["text_color"].strip()
+                or cell["link_path"].strip()
+                or cell["link_label"].strip()
+                or cell["font_size"].strip()
+                or cell["bold"].strip()
+                or cell["rich_html"].strip()
+            ):
+                return True
+        return False
+
+    def numeric_key(v):
+        raw = str(v or "").strip().replace("\xa0", " ")
+        # Extract normal numeric characters only. This handles accidental spaces or formatting.
+        cleaned = "".join(ch for ch in raw if ch.isdigit() or ch in ".-")
+        if cleaned in ("", ".", "-", "-."):
+            return (1, 999999, raw.lower())
+        try:
+            return (0, float(cleaned), raw.lower())
+        except Exception:
+            return (1, 999999, raw.lower())
+
     try:
-        rows = []
-        for r in range(3,51):
-            key_cell = get_cell(r, key_col)
-            job_cell = get_cell(r, job_col)
-            note_cell = get_cell(r, note_col)
+        locked_rows = []
 
-            has_anything = (
-                key_cell["value"].strip()
-                or job_cell["value"].strip()
-                or note_cell["value"].strip()
-                or key_cell["link_path"].strip()
-                or job_cell["link_path"].strip()
-                or note_cell["link_path"].strip()
-                or key_cell["bg_color"].strip()
-                or job_cell["bg_color"].strip()
-                or note_cell["bg_color"].strip()
-                or key_cell["rich_html"].strip()
-                or job_cell["rich_html"].strip()
-                or note_cell["rich_html"].strip()
+        # 1) Read complete row groups exactly as they exist now.
+        for r in range(3, 51):
+            group = [
+                get_cell(r, key_col),
+                get_cell(r, job_col),
+                get_cell(r, note_col)
+            ]
+            if has_data(group):
+                # Stable tiebreaker is original row number, not job text.
+                locked_rows.append((numeric_key(group[0]["value"]), r, group))
+
+        # 2) Sort only by the number cell; same numbers keep original order.
+        locked_rows.sort(key=lambda x: (x[0], x[1]))
+
+        # 3) Delete the old cells on this side entirely to prevent stuck destination-row numbers.
+        placeholders = ",".join(["?"] * len(side_cols))
+        params = [sheet] + side_cols
+        try:
+            cur.execute(
+                f"DELETE FROM workbook_cells WHERE sheet_name=? AND row_num>=3 AND row_num<=50 AND col_num IN ({placeholders})",
+                tuple(params)
             )
+        except Exception:
+            # Fallback clear if delete is blocked for any reason.
+            for r in range(3, 51):
+                for c in side_cols:
+                    upsert_workbook_cell_cur(cur, sheet, r, c, '', '', '', '', '', '', '', '', user)
 
-            if has_anything:
-                rows.append((sort_key(key_cell["value"]), r, [key_cell, job_cell, note_cell]))
-
-        # Stable sort: if two rows have the same number, keep original top-to-bottom order.
-        rows.sort(key=lambda x: (x[0], x[1]))
-
-        # Clear the side completely first.
-        for r in range(3,51):
-            for c in side_cols:
-                upsert_workbook_cell_cur(cur, sheet, r, c, '', '', '', '', '', '', '', '', user)
-
-        # Write each locked 3-cell group back together.
+        # 4) Reinsert sorted locked groups. Number stays attached to the job.
         target_r = 3
-        for _, old_r, row_group in rows:
+        for _, original_r, group in locked_rows:
             for idx, c in enumerate(side_cols):
-                cell = row_group[idx]
+                cell = group[idx]
                 upsert_workbook_cell_cur(
                     cur, sheet, target_r, c,
-                    cell["value"], cell["bg_color"], cell["text_color"],
-                    cell["link_path"], cell["link_label"],
-                    cell["font_size"], cell["bold"], cell["rich_html"],
+                    cell["value"],
+                    cell["bg_color"],
+                    cell["text_color"],
+                    cell["link_path"],
+                    cell["link_label"],
+                    cell["font_size"],
+                    cell["bold"],
+                    cell["rich_html"],
                     user
                 )
             target_r += 1
@@ -1018,7 +1042,7 @@ def reveal_file(path):
 
 def cloud_notice_banner():
     if os.environ.get("RENDER"):
-        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Sort Preserve Numbers: old database columns are upgraded automatically on startup.</div>"
+        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Simple Locked Row Sort: old database columns are upgraded automatically on startup.</div>"
     return ""
 
 
@@ -1442,9 +1466,28 @@ def index():
     if editable:
         body += "<div class='mobileTop'><button type='button' class='red' onclick=\"setCellColor('#ff6666')\">Red</button><button type='button' class='yellow' onclick=\"setCellColor('#fff066')\">Yellow</button><button type='button' class='green' onclick=\"setCellColor('#93d050')\">Green</button><button type='button' class='blue' onclick=\"setCellColor('#9dc3e6')\">Blue</button><button type='button' class='white' onclick=\"setCellColor('#ffffff')\">White</button><button type='button' onclick=\"setCellColor('')\">Clear</button><button type='button' onclick=\"toggleBold()\"><b>B</b></button><button type='button' onclick=\"openRichTextEditor()\">Words</button><button type='button' onclick=\"clearSelectedCells()\">Clear</button><button type='button' onclick=\"mobileZoomOut()\">Zoom -</button><button type='button' onclick=\"mobileZoomIn()\">Zoom +</button><span class='mobileZoomLabel' id='mobileZoomLabel'>100%</span></div>"
     body += "<div class='workspace'>"
-    if editable: body += f"<form id='sheetForm' method='post' action='/save_command'><input type='hidden' name='sheet' value='{html.escape(active)}'>"
+    if editable:
+        sched_date = get_schedule_date_settings(active)
+        checked_auto = 'checked' if sched_date['auto_today'] else ''
+        checked_manual = '' if sched_date['auto_today'] else 'checked'
+        body += f'''<div class="scheduleDateBox">
+            <span class="scheduleDateTitle">Schedule Date: {html.escape(sched_date['display_date'])}</span>
+            <button type="button" onclick="document.getElementById('dateBoxForm').style.display='block'">Change Date</button>
+        </div>
+        <div id="dateBoxForm" class="scheduleDateBox" style="display:none">
+          <form method="post" action="/set_schedule_date">
+            <input type="hidden" name="sheet" value="{html.escape(active)}">
+            <label><input type="radio" name="date_mode" value="auto" {checked_auto}> Auto Today</label>
+            <label><input type="radio" name="date_mode" value="manual" {checked_manual}> Manual Date</label>
+            <input type="date" name="schedule_date" value="{html.escape(sched_date['schedule_date'])}">
+            <button type="submit" class="green">Save Date</button>
+            <button type="button" onclick="document.getElementById('dateBoxForm').style.display='none'">Cancel</button>
+          </form>
+        </div>'''
+        body += f"<form id='sheetForm' method='post' action='/save_command'><input type='hidden' name='sheet' value='{html.escape(active)}'>"
     body += "<div class='sheetline'><div class='sheetwrap'><table class='sheet'><col class='num'><col class='job'><col class='note'><col class='num'><col class='job'><col class='note'>"
-    datev=d.get((1,4),'') or datetime.now().strftime('%m/%d/%Y')
+    sched_date = get_schedule_date_settings(active)
+    datev = sched_date['display_date']
     body += f"<tr><td></td><td class='title' colspan='2'>{html.escape(d.get((1,2),'FABRICATION SCHEDULE') or 'FABRICATION SCHEDULE')}</td><td class='date' colspan='3'>{html.escape(datev)}</td></tr>"
     body += "<tr>"
     for c in DISPLAY_COLS:
@@ -3121,7 +3164,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v43 True Row Group Sort')
+    print('PMW Ticket + Fabrication APP v44 Simple Locked Row Sort')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)

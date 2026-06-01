@@ -1,0 +1,18 @@
+PMW Render v44 Simple Locked Row Sort
+
+This rebuilds the sort rule as simple as possible.
+
+Rule:
+- Each row is a locked 3-cell group:
+  number cell + job/description/email link cell + done/notes cell
+- Sort by the left number cell only.
+- Same numbers keep their original order.
+- The number stays with the job.
+- The job/email link stays with the number.
+- The done/notes cell stays with the same row.
+- No automatic renumbering.
+- No sorting by job name.
+
+Technical change:
+- The old side cells are deleted before reinserting sorted row groups.
+- This prevents old destination-row numbers from staying behind.
