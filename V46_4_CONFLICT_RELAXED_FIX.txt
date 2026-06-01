@@ -1,0 +1,15 @@
+PMW Render v46.4 Conflict Relaxed Fix
+
+Built from v46.3 Conflict Protection.
+
+Fixes:
+- v46.3 blocked every edit because cells/pages without loaded_at timestamps were treated as stale.
+- v46.4 allows normal saves when loaded_at is blank.
+- It only blocks a save when BOTH:
+  1. the browser sent a loaded_at timestamp, and
+  2. the database has a different updated_at timestamp.
+
+Keeps:
+- auto-refresh tab behavior
+- conflict protection for cells with timestamps
+- existing tickets/snip/date features from base

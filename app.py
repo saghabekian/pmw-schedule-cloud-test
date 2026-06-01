@@ -20,7 +20,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v46.2 Auto Refresh Tabs"
+APP_VERSION = "v46.4 Conflict Relaxed Fix"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -2107,7 +2107,7 @@ function clearSelectedCells(){
   });
 }
 
-// ===== v46.2 Auto Refresh Tabs =====
+// ===== v46.4 Conflict Relaxed Fix =====
 (function(){
   const AUTO_REFRESH_MS = 5 * 60 * 1000;
   const RETURN_REFRESH_AFTER_MS = 45 * 1000;
@@ -3102,16 +3102,9 @@ def autosave_cell():
             "current_updated_by": current_by
         }), 409
 
-    # If the page had no timestamp but DB already has one, allow only if the cell is effectively new/blank page case.
-    if current_at and not loaded_at:
-        con.close()
-        return jsonify({
-            "ok": False,
-            "conflict": True,
-            "error": "Stale page with no cell timestamp. Refresh required.",
-            "current_updated_at": current_at,
-            "current_updated_by": current_by
-        }), 409
+    # v46.4: If loaded_at is blank, allow the save.
+    # Some existing cells/pages may not have timestamp hidden fields yet.
+    # Only block when BOTH loaded_at and current_at exist and are different.
 
     con.execute("""INSERT OR REPLACE INTO workbook_cells(
         sheet_name,row_num,col_num,value,bg_color,text_color,link_path,link_label,font_size,bold,rich_html,updated_by,updated_at)
@@ -3593,7 +3586,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v46.2 Auto Refresh Tabs')
+    print('PMW Ticket + Fabrication APP v46.4 Conflict Relaxed Fix')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
