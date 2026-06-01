@@ -1,0 +1,10 @@
+PMW Render v46.2 Auto Refresh Tabs
+
+Adds:
+- Refresh when users return to an old PMW tab after 45+ seconds away.
+- Refresh every 5 minutes if no one is actively typing/editing.
+- No refresh while user is focused in a cell/input or recently typed.
+- Small notice after automatic refresh.
+
+Purpose:
+- Reduce stale browser tabs autosaving old schedule data over newer changes.

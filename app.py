@@ -20,7 +20,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v45.5 Snip Auto Fill Page"
+APP_VERSION = "v46.2 Auto Refresh Tabs"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -2095,6 +2095,80 @@ function clearSelectedCells(){
     try{ if(typeof autosaveCell === 'function') autosaveCell(el); }catch(e){}
   });
 }
+
+// ===== v46.2 Auto Refresh Tabs =====
+(function(){
+  const AUTO_REFRESH_MS = 5 * 60 * 1000;
+  const RETURN_REFRESH_AFTER_MS = 45 * 1000;
+  let lastHiddenAt = null;
+  let editing = false;
+  let lastInputAt = 0;
+
+  function isEditingNow(){
+    const ae = document.activeElement;
+    const tag = ae ? (ae.tagName || '').toLowerCase() : '';
+    const activeEditable = ae && (ae.isContentEditable || tag === 'input' || tag === 'textarea' || tag === 'select');
+    const recentInput = (Date.now() - lastInputAt) < 8000;
+    return editing || activeEditable || recentInput;
+  }
+
+  function safeReload(reason){
+    if(isEditingNow()) return;
+    try { sessionStorage.setItem('pmw_auto_refresh_reason', reason || 'refresh'); } catch(e) {}
+    window.location.reload();
+  }
+
+  document.addEventListener('input', function(){ lastInputAt = Date.now(); }, true);
+
+  document.addEventListener('focusin', function(e){
+    const t = e.target;
+    if(t && (t.matches('input, textarea, select') || t.isContentEditable)){
+      editing = true;
+    }
+  }, true);
+
+  document.addEventListener('focusout', function(){
+    lastInputAt = Date.now();
+    setTimeout(function(){ editing = false; }, 2500);
+  }, true);
+
+  document.addEventListener('visibilitychange', function(){
+    if(document.hidden){
+      lastHiddenAt = Date.now();
+    } else {
+      if(lastHiddenAt && (Date.now() - lastHiddenAt) > RETURN_REFRESH_AFTER_MS){
+        safeReload('Returned to PMW tab');
+      }
+      lastHiddenAt = null;
+    }
+  });
+
+  window.addEventListener('pageshow', function(e){
+    if(e.persisted){
+      safeReload('Phone/browser restored PMW page');
+    }
+  });
+
+  setInterval(function(){
+    if(document.hidden) return;
+    safeReload('Auto refresh');
+  }, AUTO_REFRESH_MS);
+
+  window.addEventListener('load', function(){
+    try {
+      const reason = sessionStorage.getItem('pmw_auto_refresh_reason');
+      if(reason){
+        sessionStorage.removeItem('pmw_auto_refresh_reason');
+        const note = document.createElement('div');
+        note.textContent = 'PMW auto-refreshed: ' + reason;
+        note.style.cssText = 'position:fixed;right:12px;bottom:12px;background:#d4edda;border:1px solid #28a745;padding:8px 10px;z-index:9999;font-weight:bold;border-radius:4px';
+        document.body.appendChild(note);
+        setTimeout(function(){ note.remove(); }, 3500);
+      }
+    } catch(e) {}
+  });
+})();
+
 </script>
 </form>"""
     body += "</div>"
@@ -3473,7 +3547,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v45.5 Snip Auto Fill Page')
+    print('PMW Ticket + Fabrication APP v46.2 Auto Refresh Tabs')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
