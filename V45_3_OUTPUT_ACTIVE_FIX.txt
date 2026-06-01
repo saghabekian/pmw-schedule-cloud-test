@@ -1,0 +1,8 @@
+PMW Render v45.3 Output Active Fix
+
+Fixes:
+- Snip PDF failed: name 'active' is not defined.
+- Print PDF / Email Schedule / Snip outputs now use sheet variable in output routes.
+- Main schedule still uses active variable correctly.
+
+Built from v45.2/v45.1 date-control base.

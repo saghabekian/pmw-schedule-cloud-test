@@ -20,7 +20,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v45.2 Output Date Fix"
+APP_VERSION = "v45.3 Output Active Fix"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -809,7 +809,7 @@ def make_schedule_pdf(sheet):
     head_style = ParagraphStyle('PMWHead', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=11, alignment=1)
 
     title = d.get((1,2),'FABRICATION SCHEDULE') or 'FABRICATION SCHEDULE'
-    datev = get_schedule_date_settings(active)['display_date']
+    datev = get_schedule_date_settings(sheet)['display_date']
     story = [Paragraph(f"{html.escape(title)} &nbsp;&nbsp;&nbsp; {html.escape(datev)}", title_style), Spacer(1, 6)]
 
     data = [[Paragraph('NUMBER', head_style), Paragraph('NUMBERING', head_style), Paragraph('STATUS/NOTES', head_style), Paragraph('NUMBER', head_style), Paragraph('FABRICATION', head_style), Paragraph('STATUS/NOTES', head_style)]]
@@ -954,7 +954,7 @@ def make_snip_pdf(sheet, start_row, end_row, side):
     head_style=ParagraphStyle('SnipHead', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=11, alignment=1)
 
     title = d.get((1,2),'FABRICATION SCHEDULE') or 'FABRICATION SCHEDULE'
-    datev = get_schedule_date_settings(active)['display_date']
+    datev = get_schedule_date_settings(sheet)['display_date']
     story=[
         Paragraph(html.escape(title), title_style),
         Paragraph(html.escape(datev), date_style),
@@ -1042,7 +1042,7 @@ def reveal_file(path):
 
 def cloud_notice_banner():
     if os.environ.get("RENDER"):
-        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Output Date Fix: old database columns are upgraded automatically on startup.</div>"
+        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Output Active Fix: old database columns are upgraded automatically on startup.</div>"
     return ""
 
 
@@ -3289,7 +3289,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v45.2 Output Date Fix')
+    print('PMW Ticket + Fabrication APP v45.3 Output Active Fix')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
