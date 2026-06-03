@@ -23,7 +23,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v49 Backup System"
+APP_VERSION = "v49.2 Storage Cleanup Fix"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -2091,7 +2091,7 @@ function clearSelectedCells(){
   });
 }
 
-// ===== v49 Backup System =====
+// ===== v49.2 Storage Cleanup Fix =====
 (function(){
   const AUTO_REFRESH_MS = 5 * 60 * 1000;
   const RETURN_REFRESH_AFTER_MS = 45 * 1000;
@@ -2746,6 +2746,108 @@ def fmt_bytes(n):
         n /= 1024.0
         i += 1
     return f"{n:,.1f} {units[i]}"
+
+
+# ===== STORAGE HEALTH v49.2 FIX =====
+def pmw_fmt_bytes(n):
+    try:
+        n = float(n or 0)
+    except Exception:
+        n = 0
+    units = ['B','KB','MB','GB','TB']
+    i = 0
+    while n >= 1024 and i < len(units)-1:
+        n /= 1024.0
+        i += 1
+    return f"{n:,.1f} {units[i]}"
+
+def pmw_table_count(table):
+    con = db()
+    try:
+        row = con.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()
+        return int((row["n"] if row else 0) or 0)
+    except Exception:
+        return 0
+    finally:
+        con.close()
+
+def pmw_blob_expr(col):
+    return f"OCTET_LENGTH({col})" if USE_POSTGRES else f"LENGTH({col})"
+
+def pmw_sum_blob(table, col):
+    con = db()
+    try:
+        row = con.execute(f"SELECT COALESCE(SUM({pmw_blob_expr(col)}),0) AS n FROM {table}").fetchone()
+        return int((row["n"] if row else 0) or 0)
+    except Exception:
+        return 0
+    finally:
+        con.close()
+
+def pmw_storage_health_html():
+    limit_bytes = 1024 * 1024 * 1024
+    msg_bytes = pmw_sum_blob("ticket_links", "cloud_file_data")
+    att_bytes = pmw_sum_blob("ticket_attachments", "file_data")
+    ticket_bytes = msg_bytes + att_bytes
+
+    counts = {
+        "Users": pmw_table_count("users"),
+        "Schedule Cells": pmw_table_count("workbook_cells"),
+        "Tickets": pmw_table_count("ticket_links"),
+        "Ticket Attachments": pmw_table_count("ticket_attachments"),
+        "Job History": pmw_table_count("job_history"),
+        "Audit Records": pmw_table_count("audit_log"),
+    }
+
+    estimated_backup_bytes = int(ticket_bytes * 1.37) + 250000
+    estimated_pct = (estimated_backup_bytes / limit_bytes) * 100 if limit_bytes else 0
+
+    if estimated_pct < 50:
+        zone = "GREEN"
+        zone_color = "#0f7b2f"
+        advice = "Good shape. Keep weekly backups and clean up test/duplicate tickets when convenient."
+    elif estimated_pct < 75:
+        zone = "YELLOW"
+        zone_color = "#9a6700"
+        advice = "Start cleaning older ticket attachments and watch storage more often."
+    elif estimated_pct < 90:
+        zone = "RED"
+        zone_color = "#b42318"
+        advice = "Clean up old tickets soon or consider upgrading storage."
+    else:
+        zone = "CRITICAL"
+        zone_color = "#7f1d1d"
+        advice = "Take action now: delete old tickets/attachments or upgrade the database."
+
+    html_out = f"""
+    <div class='userform'>
+      <h3>Database Health</h3>
+      <p><b>Render Plan:</b> Free PostgreSQL — 1 GB storage</p>
+      <p><b>Ticket Email Storage:</b> {pmw_fmt_bytes(msg_bytes)}</p>
+      <p><b>Ticket Attachment Storage:</b> {pmw_fmt_bytes(att_bytes)}</p>
+      <p><b>Total Ticket File Storage:</b> {pmw_fmt_bytes(ticket_bytes)}</p>
+      <p><b>Estimated Full Backup Size:</b> {pmw_fmt_bytes(estimated_backup_bytes)}</p>
+      <p><b>Estimated File Storage Load:</b> {estimated_pct:.1f}% of 1 GB</p>
+      <p><b>Status:</b> <span style='color:{zone_color};font-weight:bold'>{zone}</span></p>
+      <p class='small'>{html.escape(advice)}</p>
+      <p>
+        <a class='btn' href='/admin/ticket_cleanup'>Open Cleanup</a>
+        <a class='btn' href='/admin/backup'>Download Backup</a>
+      </p>
+    </div>
+    <div class='userform'>
+      <h3>Table Counts</h3>
+      <table class='admin'>
+        <tr><th>Area</th><th>Records</th></tr>
+    """
+    for k, v in counts.items():
+        html_out += f"<tr><td>{html.escape(k)}</td><td>{v}</td></tr>"
+    html_out += """
+      </table>
+    </div>
+    """
+    return html_out
+
 
 @app.route('/admin/storage')
 @login_required
@@ -4411,7 +4513,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v49 Backup System')
+    print('PMW Ticket + Fabrication APP v49.2 Storage Cleanup Fix')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)

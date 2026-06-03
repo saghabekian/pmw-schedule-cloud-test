@@ -1,0 +1,18 @@
+PMW Render v49.2 Storage Cleanup Fix
+
+Built from v49.1/v49.
+
+Fixes:
+- Admin > Storage crash:
+  NameError: pmw_storage_health_html is not defined
+
+Keeps:
+- Backup system
+- Cleanup page
+- Job History
+- Tickets
+- Snip/Print/Email
+- Mobile cleanup
+- Conflict protection
+
+Adds helper functions directly before the Storage route so the Storage page can always load.
