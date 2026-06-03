@@ -1,0 +1,29 @@
+PMW Render v48 Job History
+
+Built from v47 Ticket Cleanup.
+
+Only adds:
+- Admin-only Job History page
+- Editor Mark Complete button
+
+How it works:
+- Editor clicks any cell in a schedule job row.
+- Clicks Mark Complete.
+- App extracts job number like 25-010 from the job description.
+- Saves completion history:
+  job number, stage, description, sheet, row, completed by, completed at.
+- Marks the row's Done column with X in green.
+
+Admin:
+- Admin > Job History
+- Search by job number, description, or user.
+- Filter by Fabrication / Numbering.
+
+No changes intended to:
+- Snip
+- Print
+- Email schedule
+- Ticket cleanup
+- Ticket upload
+- Attachment previews
+- Conflict protection

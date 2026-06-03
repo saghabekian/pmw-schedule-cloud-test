@@ -20,7 +20,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v47 Ticket Cleanup"
+APP_VERSION = "v48 Job History"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -1522,8 +1522,9 @@ BASE = """
 }
 
 .btn.red, button.red{background:#d9534f!important;color:white!important;border:1px solid #842029!important}
+.buttons button.green,.mobileFab button.green,button.green{background:#93d050!important;border:1px solid #38761d!important;font-weight:bold}
 </style></head><body>
-{% if session.get('user_id') %}<div class='top'><div class='brand'>{{app_name}} <span style='font-size:12px'>{{version}}</span></div><div class='nav'><span>{{session.username}} / {{session.role}}</span><a href='/'>Workbook</a><a href='/tickets'>Tickets</a>{% if can_admin %}<a href='/users'>Users</a><a href='/admin/storage'>Storage</a><a href='/admin/ticket_cleanup'>Cleanup</a><a href='/audit'>Audit</a>{% endif %}<a href='/logout'>Logout</a></div></div>{% endif %}
+{% if session.get('user_id') %}<div class='top'><div class='brand'>{{app_name}} <span style='font-size:12px'>{{version}}</span></div><div class='nav'><span>{{session.username}} / {{session.role}}</span><a href='/'>Workbook</a><a href='/tickets'>Tickets</a>{% if can_admin %}<a href='/users'>Users</a><a href='/admin/storage'>Storage</a><a href='/admin/ticket_cleanup'>Cleanup</a><a href='/admin/job_history'>Job History</a><a href='/audit'>Audit</a>{% endif %}<a href='/logout'>Logout</a></div></div>{% endif %}
 {% for m in get_flashed_messages() %}<div class='flash'>{{m}}</div>{% endfor %}
 {{body|safe}}</body></html>
 """
@@ -1642,12 +1643,14 @@ def index():
 <button type='submit' name='cmd' value='delete_comments'>Delete Comments</button>
 <button type='submit' name='cmd' value='sort_numbering'>Sort Numbering</button>
 <button type='submit' name='cmd' value='sort_fabrication'>Sort Fabrication</button>
+<button type='button' class='green' onclick='markSelectedComplete()'>Mark Complete</button>
 <button type='button' onclick='window.print()'>Browser Print</button>
 <button type='button' onclick='openSnipBox()'>Snip / Print / Email</button>
 </div>
 <div class='mobileFab'>
 <button type='button' onclick='document.querySelector("button[name=cmd][value=email_schedule]").click()'>Email PDF</button>
 <button type='button' onclick='document.querySelector("button[name=cmd][value=print_pdf]").click()'>Print PDF</button>
+<button type='button' onclick='markSelectedComplete()'>Mark Complete</button>
 </div>"""
     body += "</div>"
     if editable:
@@ -2108,7 +2111,7 @@ function clearSelectedCells(){
   });
 }
 
-// ===== v47 Ticket Cleanup =====
+// ===== v48 Job History =====
 (function(){
   const AUTO_REFRESH_MS = 5 * 60 * 1000;
   const RETURN_REFRESH_AFTER_MS = 45 * 1000;
@@ -2181,6 +2184,37 @@ function clearSelectedCells(){
   });
 })();
 
+
+function markSelectedComplete(){
+  const cell = window.activeCell || document.querySelector('.selectedCell');
+  if(!cell){
+    alert('Click any cell in the job row first, then click Mark Complete.');
+    return;
+  }
+  const r = cell.dataset.row;
+  const c = cell.dataset.col;
+  if(!r || !c){
+    alert('Click any cell in the job row first, then click Mark Complete.');
+    return;
+  }
+  if(!confirm('Mark this job row complete and save it to Job History?')) return;
+  const f = document.createElement('form');
+  f.method = 'POST';
+  f.action = '/mark_complete';
+  const sheetInput = document.querySelector('input[name="sheet"]');
+  const sheet = sheetInput ? sheetInput.value : 'Fabrication Schedule';
+  const fields = {sheet: sheet, row: r, col: c};
+  for(const k in fields){
+    const i = document.createElement('input');
+    i.type = 'hidden';
+    i.name = k;
+    i.value = fields[k];
+    f.appendChild(i);
+  }
+  document.body.appendChild(f);
+  f.submit();
+}
+
 </script>
 </form>"""
     body += "</div>"
@@ -2227,6 +2261,190 @@ def set_schedule_date():
     log('SET_SCHEDULE_DATE', f'{sheet} {chosen_date} auto={auto_today}')
     flash("Schedule date updated.")
     return redirect('/?sheet=' + urllib.parse.quote(sheet))
+
+
+
+# ===== JOB HISTORY / COMPLETION TRACKING v48 =====
+JOB_RE = re.compile(r"\b\d{2}-\d{3}\b")
+
+def upgrade_job_history_table():
+    try:
+        con = db()
+        cur = con.cursor()
+        cur.execute("""CREATE TABLE IF NOT EXISTS job_history(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_number TEXT,
+            stage TEXT,
+            description TEXT,
+            source_sheet TEXT,
+            source_row INTEGER,
+            source_col INTEGER,
+            completed_by TEXT,
+            completed_at TEXT,
+            created_at TEXT
+        )""")
+        con.commit()
+        con.close()
+    except Exception as e:
+        print("Job history upgrade failed:", repr(e))
+
+def extract_job_number(text):
+    m = JOB_RE.search(text or "")
+    return m.group(0) if m else ""
+
+def record_job_completion(sheet, row, col, done_col, job_text):
+    upgrade_job_history_table()
+    job_number = extract_job_number(job_text)
+    stage = "Numbering" if col in (1,2,3) else "Fabrication"
+    now = datetime.now().isoformat(timespec='seconds')
+    user = session.get('username','')
+    con = db()
+    con.execute("""INSERT INTO job_history(
+        job_number, stage, description, source_sheet, source_row, source_col,
+        completed_by, completed_at, created_at
+    ) VALUES(?,?,?,?,?,?,?,?,?)""",
+        (job_number, stage, job_text, sheet, int(row), int(done_col), user, now, now))
+    con.commit()
+    con.close()
+    return job_number, stage
+
+@app.route('/mark_complete', methods=['POST'])
+@login_required
+@role_required('editor')
+def mark_complete():
+    sheet = request.form.get('sheet','Fabrication Schedule')
+    try:
+        row = int(request.form.get('row','0') or 0)
+        col = int(request.form.get('col','0') or 0)
+    except Exception:
+        flash('Select a job row first.')
+        return redirect('/?sheet='+urllib.parse.quote(sheet))
+
+    if row < 3 or row > 50:
+        flash('Select a valid schedule row first.')
+        return redirect('/?sheet='+urllib.parse.quote(sheet))
+
+    if col in (1,2,3):
+        job_col = 2
+        done_col = 3
+    elif col in (4,5,6):
+        job_col = 5
+        done_col = 6
+    else:
+        flash('Select a job row first.')
+        return redirect('/?sheet='+urllib.parse.quote(sheet))
+
+    con = db()
+    job = con.execute("SELECT value,link_path FROM workbook_cells WHERE sheet_name=? AND row_num=? AND col_num=?",
+                      (sheet,row,job_col)).fetchone()
+    con.close()
+
+    job_text = ''
+    if job:
+        job_text = (job['value'] or '').strip()
+
+    if not job_text:
+        flash('That row does not have a job description to complete.')
+        return redirect('/?sheet='+urllib.parse.quote(sheet))
+
+    job_number, stage = record_job_completion(sheet, row, col, done_col, job_text)
+
+    upsert_workbook_cell(
+        sheet,row,done_col,
+        'X',
+        '#93d050',
+        '',
+        '',
+        '',
+        '',
+        '1',
+        '',
+        session.get('username','')
+    )
+
+    if job_number:
+        flash(f'Marked complete and saved to Job History for {job_number}.')
+    else:
+        flash('Marked complete and saved to Job History. No job number was found in the row text.')
+    log('MARK_COMPLETE', f'{sheet} row {row} {stage} {job_number} {job_text}')
+    return redirect('/?sheet='+urllib.parse.quote(sheet))
+
+@app.route('/admin/job_history')
+@login_required
+@role_required('admin')
+def admin_job_history():
+    upgrade_job_history_table()
+    q = request.args.get('q','').strip()
+    stage = request.args.get('stage','all').strip()
+
+    clauses = []
+    params = []
+    if q:
+        clauses.append("(job_number LIKE ? OR description LIKE ? OR completed_by LIKE ?)")
+        params += [f"%{q}%", f"%{q}%", f"%{q}%"]
+    if stage in ("Fabrication","Numbering"):
+        clauses.append("stage=?")
+        params.append(stage)
+    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+
+    con = db()
+    rows = con.execute(f"""SELECT * FROM job_history
+                           {where}
+                           ORDER BY completed_at DESC, id DESC
+                           LIMIT 500""", tuple(params)).fetchall()
+    try:
+        job_counts = con.execute("""SELECT job_number, COUNT(*) AS n
+                                    FROM job_history
+                                    WHERE COALESCE(job_number,'') <> ''
+                                    GROUP BY job_number
+                                    ORDER BY MAX(completed_at) DESC
+                                    LIMIT 50""").fetchall()
+    except Exception:
+        job_counts = []
+    con.close()
+
+    body = f"""
+    <div class='toolbar'>
+      <b>Admin Job History</b>
+      <span class='small'>Permanent completion log grouped by job number.</span>
+    </div>
+    <form method='get' class='toolbar'>
+      <input name='q' value='{html.escape(q, quote=True)}' placeholder='Search job #, description, user'>
+      <select name='stage'>
+        <option value='all' {'selected' if stage=='all' else ''}>All</option>
+        <option value='Fabrication' {'selected' if stage=='Fabrication' else ''}>Fabrication</option>
+        <option value='Numbering' {'selected' if stage=='Numbering' else ''}>Numbering</option>
+      </select>
+      <button>Search</button>
+      <a class='btn' href='/'>Back to Schedule</a>
+    </form>
+    <div class='userform'>
+      <b>Recent Jobs:</b>
+    """
+    if job_counts:
+        for jc in job_counts[:20]:
+            jn = jc['job_number'] or ''
+            body += f" <a class='btn' href='/admin/job_history?q={urllib.parse.quote(jn)}'>{html.escape(jn)} ({jc['n']})</a>"
+    else:
+        body += " No completed jobs yet."
+    body += "</div>"
+
+    body += """<table class='admin'>
+      <tr>
+        <th>Completed</th><th>Job #</th><th>Stage</th><th>Description</th><th>By</th><th>Source</th>
+      </tr>
+    """
+    for r in rows:
+        body += f"""<tr>
+          <td>{html.escape((r['completed_at'] or '').replace('T',' '))}</td>
+          <td><b>{html.escape(r['job_number'] or '')}</b></td>
+          <td>{html.escape(r['stage'] or '')}</td>
+          <td>{html.escape(r['description'] or '')}</td>
+          <td>{html.escape(r['completed_by'] or '')}</td>
+          <td>{html.escape(r['source_sheet'] or '')} R{r['source_row']} C{r['source_col']}</td>
+        </tr>"""
+    body += "</table>"
+    return page(body)
 
 
 @app.route('/save_command', methods=['POST'])
@@ -3747,6 +3965,7 @@ def startup_init_for_cloud():
     try:
         print("PMW DB MODE:", "PostgreSQL" if USE_POSTGRES else "SQLite", "DATABASE_URL set:", bool(DATABASE_URL), "psycopg:", bool(psycopg))
         init_db()
+        upgrade_job_history_table()
         upgrade_ticket_schedule_status_columns()
         upgrade_schedule_settings_table()
         upgrade_ticket_cloud_columns()
@@ -3786,7 +4005,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v47 Ticket Cleanup')
+    print('PMW Ticket + Fabrication APP v48 Job History')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
