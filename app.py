@@ -21,7 +21,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v48 Job History Fixed"
+APP_VERSION = "v48.1 Job History PostgreSQL Fix"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -2112,7 +2112,7 @@ function clearSelectedCells(){
   });
 }
 
-// ===== v48 Job History Fixed =====
+// ===== v48.1 Job History PostgreSQL Fix =====
 (function(){
   const AUTO_REFRESH_MS = 5 * 60 * 1000;
   const RETURN_REFRESH_AFTER_MS = 45 * 1000;
@@ -2272,22 +2272,37 @@ def upgrade_job_history_table():
     try:
         con = db()
         cur = con.cursor()
-        cur.execute("""CREATE TABLE IF NOT EXISTS job_history(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            job_number TEXT,
-            stage TEXT,
-            description TEXT,
-            source_sheet TEXT,
-            source_row INTEGER,
-            source_col INTEGER,
-            completed_by TEXT,
-            completed_at TEXT,
-            created_at TEXT
-        )""")
+        if USE_POSTGRES:
+            cur.execute("""CREATE TABLE IF NOT EXISTS job_history(
+                id SERIAL PRIMARY KEY,
+                job_number TEXT,
+                stage TEXT,
+                description TEXT,
+                source_sheet TEXT,
+                source_row INTEGER,
+                source_col INTEGER,
+                completed_by TEXT,
+                completed_at TEXT,
+                created_at TEXT
+            )""")
+        else:
+            cur.execute("""CREATE TABLE IF NOT EXISTS job_history(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_number TEXT,
+                stage TEXT,
+                description TEXT,
+                source_sheet TEXT,
+                source_row INTEGER,
+                source_col INTEGER,
+                completed_by TEXT,
+                completed_at TEXT,
+                created_at TEXT
+            )""")
         con.commit()
         con.close()
     except Exception as e:
         print("Job history upgrade failed:", repr(e))
+
 
 def extract_job_number(text):
     m = JOB_RE.search(text or "")
@@ -4006,7 +4021,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v48 Job History Fixed')
+    print('PMW Ticket + Fabrication APP v48.1 Job History PostgreSQL Fix')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)

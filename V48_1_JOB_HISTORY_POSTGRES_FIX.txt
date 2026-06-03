@@ -1,0 +1,13 @@
+PMW Render v48.1 Job History PostgreSQL Fix
+
+Fixes deploy/runtime error:
+- PostgreSQL does not support SQLite AUTOINCREMENT.
+- Job History table now uses:
+  - SERIAL PRIMARY KEY on PostgreSQL / Render
+  - INTEGER PRIMARY KEY AUTOINCREMENT on local SQLite
+
+Keeps:
+- Admin Job History
+- Mark Complete
+- Ticket Cleanup
+- Snip / Print / Email behavior from v47 base
