@@ -1,0 +1,11 @@
+PMW Render v48.2 Job History Delete
+
+Built from v48.1.
+
+Adds admin-only delete controls to Job History:
+- Delete selected individual history items.
+- Delete all Job History records for a whole job number.
+- Confirm prompts before deletion.
+
+Does NOT delete schedule rows, tickets, ticket attachments, or cleanup records.
+Only deletes records from the job_history table.

@@ -21,7 +21,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v48.1 Job History PostgreSQL Fix"
+APP_VERSION = "v48.2 Job History Delete"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -2112,7 +2112,7 @@ function clearSelectedCells(){
   });
 }
 
-// ===== v48.1 Job History PostgreSQL Fix =====
+// ===== v48.2 Job History Delete =====
 (function(){
   const AUTO_REFRESH_MS = 5 * 60 * 1000;
   const RETURN_REFRESH_AFTER_MS = 45 * 1000;
@@ -2445,22 +2445,89 @@ def admin_job_history():
         body += " No completed jobs yet."
     body += "</div>"
 
-    body += """<table class='admin'>
+    body += """<form method='post' action='/admin/job_history/delete_selected' onsubmit="return confirm('Delete selected Job History item(s)? This cannot be undone.')">
+      <div class='toolbar'>
+        <button class='red' type='submit'>Delete Selected History Items</button>
+        <button type='button' onclick="document.querySelectorAll('.jobHistBox').forEach(x=>x.checked=true)">Select All Shown</button>
+        <button type='button' onclick="document.querySelectorAll('.jobHistBox').forEach(x=>x.checked=false)">Clear Selection</button>
+      </div>
+      <table class='admin'>
       <tr>
-        <th>Completed</th><th>Job #</th><th>Stage</th><th>Description</th><th>By</th><th>Source</th>
+        <th>Delete</th><th>Completed</th><th>Job #</th><th>Stage</th><th>Description</th><th>By</th><th>Source</th><th>Whole Job</th>
       </tr>
     """
     for r in rows:
+        jn = r['job_number'] or ''
+        delete_job_link = ''
+        if jn:
+            delete_job_link = f"<form method='post' action='/admin/job_history/delete_job' style='display:inline' onsubmit=\"return confirm('Delete ALL Job History records for {html.escape(jn, quote=True)}? This cannot be undone.')\"><input type='hidden' name='job_number' value='{html.escape(jn, quote=True)}'><button class='red' type='submit'>Delete Job</button></form>"
         body += f"""<tr>
+          <td><input class='jobHistBox' type='checkbox' name='history_ids' value='{r['id']}'></td>
           <td>{html.escape((r['completed_at'] or '').replace('T',' '))}</td>
-          <td><b>{html.escape(r['job_number'] or '')}</b></td>
+          <td><b>{html.escape(jn)}</b></td>
           <td>{html.escape(r['stage'] or '')}</td>
           <td>{html.escape(r['description'] or '')}</td>
           <td>{html.escape(r['completed_by'] or '')}</td>
           <td>{html.escape(r['source_sheet'] or '')} R{r['source_row']} C{r['source_col']}</td>
+          <td>{delete_job_link}</td>
         </tr>"""
-    body += "</table>"
+    body += "</table></form>"
     return page(body)
+
+
+
+@app.route('/admin/job_history/delete_selected', methods=['POST'])
+@login_required
+@role_required('admin')
+def delete_selected_job_history():
+    upgrade_job_history_table()
+    ids = []
+    for x in request.form.getlist('history_ids'):
+        try:
+            ids.append(int(x))
+        except Exception:
+            pass
+    ids = sorted(set(ids))
+    if not ids:
+        flash('No Job History items selected.')
+        return redirect('/admin/job_history')
+
+    con = db()
+    deleted = 0
+    try:
+        for hid in ids:
+            con.execute("DELETE FROM job_history WHERE id=?", (hid,))
+            deleted += 1
+        con.commit()
+    finally:
+        con.close()
+
+    log('DELETE_JOB_HISTORY_ITEMS', f'{deleted} item(s)')
+    flash(f'Deleted {deleted} Job History item(s).')
+    return redirect('/admin/job_history')
+
+@app.route('/admin/job_history/delete_job', methods=['POST'])
+@login_required
+@role_required('admin')
+def delete_job_history_for_job():
+    upgrade_job_history_table()
+    job_number = (request.form.get('job_number') or '').strip()
+    if not job_number:
+        flash('No job number selected.')
+        return redirect('/admin/job_history')
+
+    con = db()
+    try:
+        row = con.execute("SELECT COUNT(*) AS n FROM job_history WHERE job_number=?", (job_number,)).fetchone()
+        count = int((row['n'] if row else 0) or 0)
+        con.execute("DELETE FROM job_history WHERE job_number=?", (job_number,))
+        con.commit()
+    finally:
+        con.close()
+
+    log('DELETE_JOB_HISTORY_JOB', f'{job_number}: {count} item(s)')
+    flash(f'Deleted {count} Job History item(s) for job {job_number}.')
+    return redirect('/admin/job_history')
 
 
 @app.route('/save_command', methods=['POST'])
@@ -4021,7 +4088,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v48.1 Job History PostgreSQL Fix')
+    print('PMW Ticket + Fabrication APP v48.2 Job History Delete')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
