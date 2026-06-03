@@ -1,4 +1,5 @@
 import os, sqlite3, html, urllib.parse, subprocess, platform, mimetypes
+import re
 from io import BytesIO
 from datetime import datetime
 from functools import wraps
@@ -20,7 +21,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v48 Job History"
+APP_VERSION = "v48 Job History Fixed"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -2111,7 +2112,7 @@ function clearSelectedCells(){
   });
 }
 
-// ===== v48 Job History =====
+// ===== v48 Job History Fixed =====
 (function(){
   const AUTO_REFRESH_MS = 5 * 60 * 1000;
   const RETURN_REFRESH_AFTER_MS = 45 * 1000;
@@ -2264,7 +2265,7 @@ def set_schedule_date():
 
 
 
-# ===== JOB HISTORY / COMPLETION TRACKING v48 =====
+# ===== JOB HISTORY / COMPLETION TRACKING v48 FIXED =====
 JOB_RE = re.compile(r"\b\d{2}-\d{3}\b")
 
 def upgrade_job_history_table():
@@ -4005,7 +4006,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v48 Job History')
+    print('PMW Ticket + Fabrication APP v48 Job History Fixed')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)

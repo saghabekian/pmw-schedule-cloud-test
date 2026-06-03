@@ -1,0 +1,15 @@
+PMW Render v48 Job History Fixed
+
+Patched directly from uploaded v47 zip.
+
+Fix:
+- Adds missing import re.
+
+Adds:
+- Admin-only Job History page.
+- Mark Complete button for editors.
+- Extracts job numbers like 25-010.
+- Saves completion records by job number.
+- Marks done column with green X.
+
+No intended changes to existing v47 cleanup/snips/print/tickets/upload behavior.
