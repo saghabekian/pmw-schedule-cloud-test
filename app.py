@@ -20,7 +20,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v46.4 Conflict Relaxed Fix"
+APP_VERSION = "v47 Ticket Cleanup"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -1521,8 +1521,9 @@ BASE = """
   .scheduleDateBox input,.scheduleDateBox button{width:100%;box-sizing:border-box;margin:4px 0}
 }
 
+.btn.red, button.red{background:#d9534f!important;color:white!important;border:1px solid #842029!important}
 </style></head><body>
-{% if session.get('user_id') %}<div class='top'><div class='brand'>{{app_name}} <span style='font-size:12px'>{{version}}</span></div><div class='nav'><span>{{session.username}} / {{session.role}}</span><a href='/'>Workbook</a><a href='/tickets'>Tickets</a>{% if can_admin %}<a href='/users'>Users</a><a href='/admin/storage'>Storage</a><a href='/audit'>Audit</a>{% endif %}<a href='/logout'>Logout</a></div></div>{% endif %}
+{% if session.get('user_id') %}<div class='top'><div class='brand'>{{app_name}} <span style='font-size:12px'>{{version}}</span></div><div class='nav'><span>{{session.username}} / {{session.role}}</span><a href='/'>Workbook</a><a href='/tickets'>Tickets</a>{% if can_admin %}<a href='/users'>Users</a><a href='/admin/storage'>Storage</a><a href='/admin/ticket_cleanup'>Cleanup</a><a href='/audit'>Audit</a>{% endif %}<a href='/logout'>Logout</a></div></div>{% endif %}
 {% for m in get_flashed_messages() %}<div class='flash'>{{m}}</div>{% endfor %}
 {{body|safe}}</body></html>
 """
@@ -2107,7 +2108,7 @@ function clearSelectedCells(){
   });
 }
 
-// ===== v46.4 Conflict Relaxed Fix =====
+// ===== v47 Ticket Cleanup =====
 (function(){
   const AUTO_REFRESH_MS = 5 * 60 * 1000;
   const RETURN_REFRESH_AFTER_MS = 45 * 1000;
@@ -2912,6 +2913,205 @@ def ticket_scheduled_badge(row):
     return "<span style='color:#9a6700;font-weight:bold'>Not Scheduled</span>"
 
 
+
+# ===== TICKET CLEANUP / STORAGE MANAGEMENT v47 =====
+def fmt_bytes_cleanup(n):
+    try:
+        n = float(n or 0)
+    except Exception:
+        n = 0
+    units = ['B','KB','MB','GB','TB']
+    i = 0
+    while n >= 1024 and i < len(units)-1:
+        n /= 1024.0
+        i += 1
+    return f"{n:,.1f} {units[i]}"
+
+def _blob_len_expr(col):
+    return f"OCTET_LENGTH({col})" if USE_POSTGRES else f"LENGTH({col})"
+
+def ticket_storage_totals():
+    con = db()
+    try:
+        tickets = con.execute("SELECT COUNT(*) AS n FROM ticket_links").fetchone()["n"]
+    except Exception:
+        tickets = 0
+    try:
+        attachments = con.execute("SELECT COUNT(*) AS n FROM ticket_attachments").fetchone()["n"]
+    except Exception:
+        attachments = 0
+    try:
+        msg_bytes = con.execute(f"SELECT COALESCE(SUM({_blob_len_expr('cloud_file_data')}),0) AS n FROM ticket_links").fetchone()["n"]
+    except Exception:
+        msg_bytes = 0
+    try:
+        att_bytes = con.execute(f"SELECT COALESCE(SUM({_blob_len_expr('file_data')}),0) AS n FROM ticket_attachments").fetchone()["n"]
+    except Exception:
+        att_bytes = 0
+    con.close()
+    msg_bytes = int(msg_bytes or 0)
+    att_bytes = int(att_bytes or 0)
+    return {"tickets": tickets, "attachments": attachments, "msg_bytes": msg_bytes, "att_bytes": att_bytes, "total_bytes": msg_bytes + att_bytes}
+
+def ticket_file_size(ticket_id):
+    con = db()
+    try:
+        q = f"SELECT COALESCE({_blob_len_expr('cloud_file_data')},0) AS n FROM ticket_links WHERE id=?"
+        row = con.execute(q, (ticket_id,)).fetchone()
+        msg_size = int((row["n"] if row else 0) or 0)
+    except Exception:
+        msg_size = 0
+    try:
+        q = f"SELECT COALESCE(SUM({_blob_len_expr('file_data')}),0) AS n FROM ticket_attachments WHERE ticket_id=?"
+        row = con.execute(q, (ticket_id,)).fetchone()
+        att_size = int((row["n"] if row else 0) or 0)
+    except Exception:
+        att_size = 0
+    try:
+        att_count = con.execute("SELECT COUNT(*) AS n FROM ticket_attachments WHERE ticket_id=?", (ticket_id,)).fetchone()["n"]
+    except Exception:
+        att_count = 0
+    con.close()
+    return msg_size, att_size, att_count
+
+@app.route('/admin/ticket_cleanup')
+@login_required
+@role_required('admin')
+def ticket_cleanup():
+    q = request.args.get('q','').strip()
+    status = request.args.get('status','all').strip()
+    totals = ticket_storage_totals()
+
+    con = db()
+    clauses = []
+    params = []
+    if q:
+        clauses.append("(job_number LIKE ? OR subject LIKE ? OR sender LIKE ?)")
+        params += [f"%{q}%", f"%{q}%", f"%{q}%"]
+    if status == "scheduled":
+        clauses.append("COALESCE(scheduled_status,'')='scheduled'")
+    elif status == "unscheduled":
+        clauses.append("COALESCE(scheduled_status,'')<>'scheduled'")
+    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    rows = con.execute(f"SELECT * FROM ticket_links {where} ORDER BY id DESC LIMIT 300", tuple(params)).fetchall()
+    con.close()
+
+    body = f"""
+    <div class='toolbar'>
+      <b>Ticket Cleanup / Storage</b>
+      <span class='small'>Admin only. Delete selected old/test ticket emails to free database space.</span>
+    </div>
+    <div class='userform'>
+      <p><b>Total Tickets:</b> {totals['tickets']} &nbsp; <b>Attachments:</b> {totals['attachments']} &nbsp; <b>Storage:</b> {fmt_bytes_cleanup(totals['total_bytes'])}</p>
+      <p><b>.msg files:</b> {fmt_bytes_cleanup(totals['msg_bytes'])} &nbsp; <b>Attachments:</b> {fmt_bytes_cleanup(totals['att_bytes'])}</p>
+      <p class='small'>Deleting here removes the ticket email record, stored .msg file, and stored attachments from PostgreSQL. Existing schedule cells are not removed automatically.</p>
+    </div>
+    <form method='get' class='toolbar'>
+      <input name='q' value='{html.escape(q, quote=True)}' placeholder='Search job, subject, sender'>
+      <select name='status'>
+        <option value='all' {'selected' if status=='all' else ''}>All</option>
+        <option value='scheduled' {'selected' if status=='scheduled' else ''}>Scheduled</option>
+        <option value='unscheduled' {'selected' if status=='unscheduled' else ''}>Not Scheduled</option>
+      </select>
+      <button>Filter</button>
+      <a class='btn' href='/tickets'>Back to Tickets</a>
+    </form>
+    <form method='post' action='/admin/delete_selected_tickets' onsubmit="return confirm('Delete selected ticket emails and attachments from the database? This cannot be undone.')">
+      <div class='toolbar'>
+        <button class='red' type='submit'>Delete Selected</button>
+        <button type='button' onclick="document.querySelectorAll('.ticketDeleteBox').forEach(x=>x.checked=true)">Select All Shown</button>
+        <button type='button' onclick="document.querySelectorAll('.ticketDeleteBox').forEach(x=>x.checked=false)">Clear Selection</button>
+      </div>
+      <table class='admin'>
+        <tr><th>Delete</th><th>ID</th><th>Status</th><th>Received</th><th>Job</th><th>Subject</th><th>Sender</th><th>Files</th><th>Size</th><th>Open</th></tr>
+    """
+    for r in rows:
+        tid = r["id"]
+        msg_size, att_size, att_count = ticket_file_size(tid)
+        try:
+            sched = ticket_scheduled_badge(r)
+        except Exception:
+            sched = ''
+        try:
+            cloud = r['cloud_file'] or ''
+        except Exception:
+            cloud = ''
+        openlink = f"<a class='btn' href='/ticket_view_email/{tid}'>View</a>" if cloud else f"<a class='btn' href='/ticket_link_info/{tid}'>Info</a>"
+        body += f"""<tr>
+          <td><input class='ticketDeleteBox' type='checkbox' name='ticket_ids' value='{tid}'></td>
+          <td>{tid}</td>
+          <td>{sched}</td>
+          <td>{html.escape(r['received'] or '')}</td>
+          <td>{html.escape(r['job_number'] or '')}</td>
+          <td>{html.escape(r['subject'] or '')}</td>
+          <td>{html.escape(r['sender'] or '')}</td>
+          <td>{att_count} attachment(s)</td>
+          <td>{fmt_bytes_cleanup(msg_size + att_size)}</td>
+          <td>{openlink}</td>
+        </tr>"""
+    body += "</table></form>"
+    return page(body)
+
+@app.route('/admin/delete_selected_tickets', methods=['POST'])
+@login_required
+@role_required('admin')
+def delete_selected_tickets():
+    ids = []
+    for x in request.form.getlist('ticket_ids'):
+        try:
+            ids.append(int(x))
+        except Exception:
+            pass
+    ids = sorted(set(ids))
+    if not ids:
+        flash('No tickets selected.')
+        return redirect('/admin/ticket_cleanup')
+
+    con = db()
+    deleted = 0
+    freed = 0
+    try:
+        for tid in ids:
+            try:
+                msg_size, att_size, att_count = ticket_file_size(tid)
+                freed += msg_size + att_size
+            except Exception:
+                pass
+
+            try:
+                atts = con.execute("SELECT stored_filename FROM ticket_attachments WHERE ticket_id=?", (tid,)).fetchall()
+                for a in atts:
+                    fn = a["stored_filename"] or ""
+                    if fn:
+                        p = os.path.join(CLOUD_ATTACHMENT_FOLDER, fn)
+                        if os.path.exists(p):
+                            try: os.remove(p)
+                            except Exception: pass
+            except Exception:
+                pass
+
+            try:
+                t = con.execute("SELECT cloud_file FROM ticket_links WHERE id=?", (tid,)).fetchone()
+                if t and (t["cloud_file"] or ""):
+                    p = os.path.join(CLOUD_TICKET_FOLDER, t["cloud_file"])
+                    if os.path.exists(p):
+                        try: os.remove(p)
+                        except Exception: pass
+            except Exception:
+                pass
+
+            con.execute("DELETE FROM ticket_attachments WHERE ticket_id=?", (tid,))
+            con.execute("DELETE FROM ticket_links WHERE id=?", (tid,))
+            deleted += 1
+        con.commit()
+    finally:
+        con.close()
+
+    log('DELETE_TICKETS', f'{deleted} tickets, approx {fmt_bytes_cleanup(freed)} freed')
+    flash(f'Deleted {deleted} ticket(s). Approx storage freed: {fmt_bytes_cleanup(freed)}.')
+    return redirect('/admin/ticket_cleanup')
+
+
 @app.route('/tickets')
 @login_required
 def tickets():
@@ -3586,7 +3786,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v46.4 Conflict Relaxed Fix')
+    print('PMW Ticket + Fabrication APP v47 Ticket Cleanup')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)

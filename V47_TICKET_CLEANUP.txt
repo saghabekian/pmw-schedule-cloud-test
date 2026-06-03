@@ -1,0 +1,9 @@
+PMW Render v47 Ticket Cleanup
+
+Adds admin-only ticket cleanup:
+- Admin > Cleanup
+- Shows total ticket storage used
+- Search/filter tickets
+- Select tickets to delete
+- Delete removes ticket record, stored .msg bytes, and stored attachments
+- Existing schedule cells are not automatically deleted
