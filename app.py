@@ -2780,9 +2780,13 @@ def admin_storage():
       <p><b>Total stored ticket files:</b> {fmt_bytes(total)}</p>
       <p class='small'>This counts files stored inside PostgreSQL. Render free/cheap databases have limits, so review this page regularly.</p>
     </div>
+    """
+    body += pmw_storage_health_html()
+    body += """
     <h3>Cleanup</h3>
     <div class='userform'>
-      <p>Cleanup tools should be used carefully. For now, this page only measures storage. Next we can add archive/delete by date or completed job.</p>
+      <p>Use Cleanup to delete selected old/test ticket emails and attachments when storage starts getting high.</p>
+      <p><a class='btn' href='/admin/ticket_cleanup'>Open Cleanup</a></p>
     </div>
     """
     return page(body)

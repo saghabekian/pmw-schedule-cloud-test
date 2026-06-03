@@ -1,0 +1,16 @@
+PMW Render v49.1 Storage Health
+
+Built from v49 Backup System.
+
+Adds to Admin > Storage only:
+- Database Health panel
+- Render Free 1GB storage reference
+- Ticket email storage
+- Ticket attachment storage
+- Estimated full backup size
+- Estimated file storage load percentage
+- GREEN/YELLOW/RED/CRITICAL status
+- Table counts
+- Quick links to Cleanup and Backup
+
+No changes to main schedule page.
