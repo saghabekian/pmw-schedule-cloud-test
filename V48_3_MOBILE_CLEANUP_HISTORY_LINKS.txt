@@ -1,0 +1,20 @@
+PMW Render v48.3 Mobile Cleanup + History Links
+
+Built from v48.2.
+
+Changes:
+1. Removes all floating green mobile buttons.
+   - Use the normal bottom buttons by scrolling instead.
+
+2. Job History now stores the linked ticket/email attachment from the completed schedule row.
+   - When Mark Complete is clicked, the job cell's link_path/link_label are saved to job_history.
+   - Admin > Job History shows an Attachment/Open Ticket link when the completed row had one.
+
+Does not intentionally change:
+- Tickets
+- Cleanup
+- Snip
+- Print
+- Email schedule
+- Sorting
+- Conflict protection

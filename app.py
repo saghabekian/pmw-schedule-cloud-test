@@ -21,7 +21,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v48.2 Job History Delete"
+APP_VERSION = "v48.3 Mobile Cleanup + History Links"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -51,7 +51,9 @@ def auto_upgrade_sqlite_schema():
             password_hash TEXT,
             role TEXT,
             active INTEGER DEFAULT 1,
-            created_at TEXT
+            created_at TEXT,
+            link_path TEXT DEFAULT '',
+            link_label TEXT DEFAULT ''
         )""")
 
         cur.execute("""CREATE TABLE IF NOT EXISTS workbook_cells(
@@ -1156,7 +1158,7 @@ BASE = """
 }
 
 /* ===== PMW MOBILE LAYOUT ===== */
-.mobileTop,.mobileFab{display:none}
+.mobileTop,.mobileFab{display:none!important}
 
 @media (max-width: 800px){
   body{font-size:16px;background:#f1f1f1;overflow:hidden}
@@ -1235,24 +1237,8 @@ BASE = """
   .buttons button[name='cmd'][value='delete_comments']{
     display:none;
   }
-  .mobileFab{
-    display:flex;
-    position:fixed;
-    right:14px;
-    bottom:64px;
-    z-index:1300;
-    flex-direction:column;
-    gap:8px;
-  }
-  .mobileFab button{
-    border:0;
-    border-radius:24px;
-    padding:12px 16px;
-    background:#107c41;
-    color:white;
-    font-weight:bold;
-    box-shadow:0 2px 8px rgba(0,0,0,.35);
-  }
+  .mobileFab{display:none!important}
+  .mobileFab button{display:none!important}
   .mobileTop{
     display:flex;
     position:sticky;
@@ -1346,14 +1332,8 @@ BASE = """
   .buttons button[name='cmd'][value='done']{
     display:none !important;
   }
-  .mobileFab{
-    bottom:76px !important;
-  }
-  .mobileFab button{
-    color:white !important;
-    min-width:145px;
-    font-size:17px !important;
-  }
+  .mobileFab{display:none!important}
+  .mobileFab button{display:none!important}
 }
 
 
@@ -1524,6 +1504,7 @@ BASE = """
 
 .btn.red, button.red{background:#d9534f!important;color:white!important;border:1px solid #842029!important}
 .buttons button.green,.mobileFab button.green,button.green{background:#93d050!important;border:1px solid #38761d!important;font-weight:bold}
+.mobileFab{display:none!important}.mobileFab button{display:none!important}
 </style></head><body>
 {% if session.get('user_id') %}<div class='top'><div class='brand'>{{app_name}} <span style='font-size:12px'>{{version}}</span></div><div class='nav'><span>{{session.username}} / {{session.role}}</span><a href='/'>Workbook</a><a href='/tickets'>Tickets</a>{% if can_admin %}<a href='/users'>Users</a><a href='/admin/storage'>Storage</a><a href='/admin/ticket_cleanup'>Cleanup</a><a href='/admin/job_history'>Job History</a><a href='/audit'>Audit</a>{% endif %}<a href='/logout'>Logout</a></div></div>{% endif %}
 {% for m in get_flashed_messages() %}<div class='flash'>{{m}}</div>{% endfor %}
@@ -1647,11 +1628,6 @@ def index():
 <button type='button' class='green' onclick='markSelectedComplete()'>Mark Complete</button>
 <button type='button' onclick='window.print()'>Browser Print</button>
 <button type='button' onclick='openSnipBox()'>Snip / Print / Email</button>
-</div>
-<div class='mobileFab'>
-<button type='button' onclick='document.querySelector("button[name=cmd][value=email_schedule]").click()'>Email PDF</button>
-<button type='button' onclick='document.querySelector("button[name=cmd][value=print_pdf]").click()'>Print PDF</button>
-<button type='button' onclick='markSelectedComplete()'>Mark Complete</button>
 </div>"""
     body += "</div>"
     if editable:
@@ -2112,7 +2088,7 @@ function clearSelectedCells(){
   });
 }
 
-// ===== v48.2 Job History Delete =====
+// ===== v48.3 Mobile Cleanup + History Links =====
 (function(){
   const AUTO_REFRESH_MS = 5 * 60 * 1000;
   const RETURN_REFRESH_AFTER_MS = 45 * 1000;
@@ -2298,6 +2274,23 @@ def upgrade_job_history_table():
                 completed_at TEXT,
                 created_at TEXT
             )""")
+
+        for coldef in [
+            "link_path TEXT DEFAULT ''",
+            "link_label TEXT DEFAULT ''"
+        ]:
+            try:
+                cur.execute("ALTER TABLE job_history ADD COLUMN " + coldef)
+                try:
+                    con.commit()
+                except Exception:
+                    pass
+            except Exception:
+                try:
+                    if USE_POSTGRES:
+                        con.con.rollback()
+                except Exception:
+                    pass
         con.commit()
         con.close()
     except Exception as e:
@@ -2308,7 +2301,7 @@ def extract_job_number(text):
     m = JOB_RE.search(text or "")
     return m.group(0) if m else ""
 
-def record_job_completion(sheet, row, col, done_col, job_text):
+def record_job_completion(sheet, row, col, done_col, job_text, link_path='', link_label=''):
     upgrade_job_history_table()
     job_number = extract_job_number(job_text)
     stage = "Numbering" if col in (1,2,3) else "Fabrication"
@@ -2317,9 +2310,9 @@ def record_job_completion(sheet, row, col, done_col, job_text):
     con = db()
     con.execute("""INSERT INTO job_history(
         job_number, stage, description, source_sheet, source_row, source_col,
-        completed_by, completed_at, created_at
-    ) VALUES(?,?,?,?,?,?,?,?,?)""",
-        (job_number, stage, job_text, sheet, int(row), int(done_col), user, now, now))
+        completed_by, completed_at, created_at, link_path, link_label
+    ) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+        (job_number, stage, job_text, sheet, int(row), int(done_col), user, now, now, link_path or '', link_label or ''))
     con.commit()
     con.close()
     return job_number, stage
@@ -2351,19 +2344,27 @@ def mark_complete():
         return redirect('/?sheet='+urllib.parse.quote(sheet))
 
     con = db()
-    job = con.execute("SELECT value,link_path FROM workbook_cells WHERE sheet_name=? AND row_num=? AND col_num=?",
+    job = con.execute("SELECT value,link_path,link_label FROM workbook_cells WHERE sheet_name=? AND row_num=? AND col_num=?",
                       (sheet,row,job_col)).fetchone()
     con.close()
 
     job_text = ''
+    link_path = ''
+    link_label = ''
     if job:
         job_text = (job['value'] or '').strip()
+        try:
+            link_path = (job['link_path'] or '').strip()
+            link_label = (job['link_label'] or '').strip()
+        except Exception:
+            link_path = ''
+            link_label = ''
 
     if not job_text:
         flash('That row does not have a job description to complete.')
         return redirect('/?sheet='+urllib.parse.quote(sheet))
 
-    job_number, stage = record_job_completion(sheet, row, col, done_col, job_text)
+    job_number, stage = record_job_completion(sheet, row, col, done_col, job_text, link_path, link_label)
 
     upsert_workbook_cell(
         sheet,row,done_col,
@@ -2453,7 +2454,7 @@ def admin_job_history():
       </div>
       <table class='admin'>
       <tr>
-        <th>Delete</th><th>Completed</th><th>Job #</th><th>Stage</th><th>Description</th><th>By</th><th>Source</th><th>Whole Job</th>
+        <th>Delete</th><th>Completed</th><th>Job #</th><th>Stage</th><th>Description</th><th>Attachment</th><th>By</th><th>Source</th><th>Whole Job</th>
       </tr>
     """
     for r in rows:
@@ -2461,12 +2462,20 @@ def admin_job_history():
         delete_job_link = ''
         if jn:
             delete_job_link = f"<form method='post' action='/admin/job_history/delete_job' style='display:inline' onsubmit=\"return confirm('Delete ALL Job History records for {html.escape(jn, quote=True)}? This cannot be undone.')\"><input type='hidden' name='job_number' value='{html.escape(jn, quote=True)}'><button class='red' type='submit'>Delete Job</button></form>"
+        try:
+            lp = r['link_path'] or ''
+            ll = r['link_label'] or 'Open Ticket'
+        except Exception:
+            lp = ''
+            ll = 'Open Ticket'
+        hist_link = f"<a class='btn' href='{html.escape(lp, quote=True)}'>📎 {html.escape(ll)}</a>" if lp else ''
         body += f"""<tr>
           <td><input class='jobHistBox' type='checkbox' name='history_ids' value='{r['id']}'></td>
           <td>{html.escape((r['completed_at'] or '').replace('T',' '))}</td>
           <td><b>{html.escape(jn)}</b></td>
           <td>{html.escape(r['stage'] or '')}</td>
           <td>{html.escape(r['description'] or '')}</td>
+          <td>{hist_link}</td>
           <td>{html.escape(r['completed_by'] or '')}</td>
           <td>{html.escape(r['source_sheet'] or '')} R{r['source_row']} C{r['source_col']}</td>
           <td>{delete_job_link}</td>
@@ -4088,7 +4097,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v48.2 Job History Delete')
+    print('PMW Ticket + Fabrication APP v48.3 Mobile Cleanup + History Links')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
