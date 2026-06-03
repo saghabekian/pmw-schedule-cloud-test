@@ -1,0 +1,25 @@
+PMW Render v49 Backup System
+
+Built from v48.3.
+
+Adds admin-only Backup / Restore:
+- Admin > Backup
+- Download Full Backup JSON
+- Restore uploaded backup with RESTORE confirmation
+- Exports/restores:
+  users
+  workbook_cells
+  ticket_links
+  ticket_attachments
+  audit_log
+  schedule_settings
+  job_history
+
+Also adds:
+- One automatic server-side JSON backup copy per day when the app is used.
+  Note: Render filesystem can be temporary, so downloaded backups are the real safety copy.
+
+Recommended use:
+- Download a full backup at least weekly.
+- Download before major app changes.
+- Keep backups on your PC/company drive/cloud storage.

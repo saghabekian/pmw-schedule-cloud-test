@@ -1,4 +1,6 @@
 import os, sqlite3, html, urllib.parse, subprocess, platform, mimetypes
+import base64
+import json
 import re
 from io import BytesIO
 from datetime import datetime
@@ -21,7 +23,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v48.3 Mobile Cleanup + History Links"
+APP_VERSION = "v49 Backup System"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -1505,8 +1507,9 @@ BASE = """
 .btn.red, button.red{background:#d9534f!important;color:white!important;border:1px solid #842029!important}
 .buttons button.green,.mobileFab button.green,button.green{background:#93d050!important;border:1px solid #38761d!important;font-weight:bold}
 .mobileFab{display:none!important}.mobileFab button{display:none!important}
+.btn.green,button.green{background:#93d050!important;border:1px solid #38761d!important;font-weight:bold}.btn.red,button.red{background:#d9534f!important;color:white!important;border:1px solid #842029!important}
 </style></head><body>
-{% if session.get('user_id') %}<div class='top'><div class='brand'>{{app_name}} <span style='font-size:12px'>{{version}}</span></div><div class='nav'><span>{{session.username}} / {{session.role}}</span><a href='/'>Workbook</a><a href='/tickets'>Tickets</a>{% if can_admin %}<a href='/users'>Users</a><a href='/admin/storage'>Storage</a><a href='/admin/ticket_cleanup'>Cleanup</a><a href='/admin/job_history'>Job History</a><a href='/audit'>Audit</a>{% endif %}<a href='/logout'>Logout</a></div></div>{% endif %}
+{% if session.get('user_id') %}<div class='top'><div class='brand'>{{app_name}} <span style='font-size:12px'>{{version}}</span></div><div class='nav'><span>{{session.username}} / {{session.role}}</span><a href='/'>Workbook</a><a href='/tickets'>Tickets</a>{% if can_admin %}<a href='/users'>Users</a><a href='/admin/storage'>Storage</a><a href='/admin/ticket_cleanup'>Cleanup</a><a href='/admin/job_history'>Job History</a><a href='/admin/backup'>Backup</a><a href='/audit'>Audit</a>{% endif %}<a href='/logout'>Logout</a></div></div>{% endif %}
 {% for m in get_flashed_messages() %}<div class='flash'>{{m}}</div>{% endfor %}
 {{body|safe}}</body></html>
 """
@@ -2088,7 +2091,7 @@ function clearSelectedCells(){
   });
 }
 
-// ===== v48.3 Mobile Cleanup + History Links =====
+// ===== v49 Backup System =====
 (function(){
   const AUTO_REFRESH_MS = 5 * 60 * 1000;
   const RETURN_REFRESH_AFTER_MS = 45 * 1000;
@@ -3284,6 +3287,313 @@ def ticket_file_size(ticket_id):
     con.close()
     return msg_size, att_size, att_count
 
+
+# ===== BACKUP / RESTORE SYSTEM v49 =====
+BACKUP_TABLES = [
+    "users",
+    "workbook_cells",
+    "ticket_links",
+    "ticket_attachments",
+    "audit_log",
+    "schedule_settings",
+    "job_history"
+]
+
+BINARY_COLUMNS = {
+    "ticket_links": ["cloud_file_data"],
+    "ticket_attachments": ["file_data"]
+}
+
+def table_exists(table):
+    con = db()
+    try:
+        if USE_POSTGRES:
+            row = con.execute("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name=?) AS ok", (table,)).fetchone()
+            ok = bool(row["ok"]) if row else False
+        else:
+            row = con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()
+            ok = bool(row)
+    except Exception:
+        ok = False
+    finally:
+        con.close()
+    return ok
+
+def get_table_columns(con, table):
+    if USE_POSTGRES:
+        rows = con.execute("""SELECT column_name FROM information_schema.columns
+                              WHERE table_name=?
+                              ORDER BY ordinal_position""", (table,)).fetchall()
+        return [r["column_name"] for r in rows]
+    rows = con.execute(f"PRAGMA table_info({table})").fetchall()
+    return [r["name"] for r in rows]
+
+def _backup_value(table, col, val):
+    if val is None:
+        return None
+    if col in BINARY_COLUMNS.get(table, []):
+        try:
+            if isinstance(val, memoryview):
+                val = val.tobytes()
+            if isinstance(val, str):
+                # Already text, keep as text backup.
+                raw = val.encode("utf-8")
+            else:
+                raw = bytes(val)
+            return {"__pmw_blob_b64__": base64.b64encode(raw).decode("ascii")}
+        except Exception:
+            return None
+    return val
+
+def _restore_value(table, col, val):
+    if isinstance(val, dict) and "__pmw_blob_b64__" in val:
+        try:
+            return base64.b64decode(val["__pmw_blob_b64__"])
+        except Exception:
+            return None
+    return val
+
+def build_backup_payload():
+    con = db()
+    payload = {
+        "app": "PMW Ticket + Fabrication",
+        "backup_version": 1,
+        "exported_at": datetime.now().isoformat(timespec='seconds'),
+        "tables": {}
+    }
+    try:
+        for table in BACKUP_TABLES:
+            if not table_exists(table):
+                payload["tables"][table] = {"columns": [], "rows": [], "missing": True}
+                continue
+            cols = get_table_columns(con, table)
+            rows = con.execute(f"SELECT * FROM {table}").fetchall()
+            out_rows = []
+            for row in rows:
+                obj = {}
+                for col in cols:
+                    try:
+                        obj[col] = _backup_value(table, col, row[col])
+                    except Exception:
+                        obj[col] = None
+                out_rows.append(obj)
+            payload["tables"][table] = {"columns": cols, "rows": out_rows, "missing": False}
+    finally:
+        con.close()
+    return payload
+
+def write_server_backup_copy():
+    """Writes a server-side backup file. On Render Free, filesystem may be temporary, so download backup is still the real safety copy."""
+    try:
+        os.makedirs(EXPORT_FOLDER, exist_ok=True)
+        payload = build_backup_payload()
+        fn = "PMW_BACKUP_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".json"
+        path = os.path.join(EXPORT_FOLDER, fn)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(payload, f)
+        return path
+    except Exception as e:
+        print("Server backup copy failed:", repr(e))
+        return ""
+
+def maybe_daily_backup():
+    """Create one server-side backup per day when the app is used. Download backups remain recommended."""
+    try:
+        today = datetime.now().strftime("%Y-%m-%d")
+        marker = os.path.join(EXPORT_FOLDER, "last_auto_backup.txt")
+        last = ""
+        if os.path.exists(marker):
+            try:
+                last = open(marker, "r", encoding="utf-8").read().strip()
+            except Exception:
+                last = ""
+        if last != today:
+            path = write_server_backup_copy()
+            if path:
+                with open(marker, "w", encoding="utf-8") as f:
+                    f.write(today)
+    except Exception as e:
+        print("maybe_daily_backup failed:", repr(e))
+
+@app.before_request
+def pmw_auto_daily_backup_hook():
+    # Lightweight daily backup trigger. Only runs once per day per server filesystem.
+    if request.endpoint and not request.endpoint.startswith('static'):
+        maybe_daily_backup()
+
+@app.route('/admin/backup')
+@login_required
+@role_required('admin')
+def admin_backup():
+    counts = {}
+    con = db()
+    try:
+        for table in BACKUP_TABLES:
+            try:
+                if table_exists(table):
+                    counts[table] = con.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()["n"]
+                else:
+                    counts[table] = "missing"
+            except Exception:
+                counts[table] = "error"
+    finally:
+        con.close()
+
+    body = """
+    <div class='toolbar'>
+      <b>Admin Backup / Restore</b>
+      <span class='small'>Download a full PMW data backup and restore it if needed.</span>
+    </div>
+    <div class='userform'>
+      <h3>Download Backup</h3>
+      <p>This exports users, schedule cells, ticket emails, ticket attachments, job history, settings, and audit records into one JSON file.</p>
+      <p><a class='btn green' href='/admin/download_backup'>Download Full Backup</a></p>
+      <p class='small'><b>Important:</b> Render's app filesystem can be temporary. Keep downloaded backups on your PC, company drive, or cloud storage.</p>
+    </div>
+    <div class='userform'>
+      <h3>Restore Backup</h3>
+      <p>Restoring will replace the selected PMW database tables with the contents of the uploaded backup file.</p>
+      <form method='post' action='/admin/restore_backup' enctype='multipart/form-data' onsubmit="return confirm('RESTORE BACKUP? This will replace current PMW data tables with the uploaded backup. Continue?')">
+        <input type='file' name='backup_file' accept='.json,application/json' required>
+        <p><label>Type RESTORE to confirm: <input name='confirm_text' required></label></p>
+        <button class='red' type='submit'>Restore Uploaded Backup</button>
+      </form>
+    </div>
+    <div class='userform'>
+      <h3>Current Table Counts</h3>
+      <table class='admin'><tr><th>Table</th><th>Rows</th></tr>
+    """
+    for table in BACKUP_TABLES:
+        body += f"<tr><td>{html.escape(table)}</td><td>{html.escape(str(counts.get(table,'')))}</td></tr>"
+    body += "</table></div>"
+    return page(body)
+
+@app.route('/admin/download_backup')
+@login_required
+@role_required('admin')
+def download_backup():
+    payload = build_backup_payload()
+    data = json.dumps(payload).encode("utf-8")
+    fn = "PMW_FULL_BACKUP_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".json"
+    try:
+        from flask import Response
+        resp = Response(data, mimetype="application/json")
+        resp.headers["Content-Disposition"] = f"attachment; filename={fn}"
+        log('DOWNLOAD_BACKUP', fn)
+        return resp
+    except Exception:
+        path = os.path.join(EXPORT_FOLDER, fn)
+        with open(path, "wb") as f:
+            f.write(data)
+        return send_file(path, as_attachment=True, download_name=fn)
+
+def reset_pg_sequence_if_needed(con, table):
+    if not USE_POSTGRES:
+        return
+    try:
+        # Only common id tables need this. Safe if sequence exists.
+        con.execute(f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), COALESCE((SELECT MAX(id) FROM {table}), 1), true)")
+        try:
+            con.commit()
+        except Exception:
+            pass
+    except Exception:
+        try:
+            con.con.rollback()
+        except Exception:
+            pass
+
+@app.route('/admin/restore_backup', methods=['POST'])
+@login_required
+@role_required('admin')
+def restore_backup():
+    if (request.form.get('confirm_text') or '').strip() != 'RESTORE':
+        flash('Restore cancelled. You must type RESTORE exactly.')
+        return redirect('/admin/backup')
+    f = request.files.get('backup_file')
+    if not f:
+        flash('No backup file uploaded.')
+        return redirect('/admin/backup')
+    try:
+        payload = json.load(f.stream)
+    except Exception as e:
+        flash('Could not read backup JSON: ' + str(e))
+        return redirect('/admin/backup')
+
+    if not isinstance(payload, dict) or "tables" not in payload:
+        flash('Invalid PMW backup file.')
+        return redirect('/admin/backup')
+
+    # Ensure current tables exist before restore.
+    try:
+        init_db()
+    except Exception:
+        pass
+    try:
+        upgrade_schedule_settings_table()
+    except Exception:
+        pass
+    try:
+        upgrade_ticket_schedule_status_columns()
+    except Exception:
+        pass
+    try:
+        upgrade_job_history_table()
+    except Exception:
+        pass
+
+    con = db()
+    restored = {}
+    try:
+        for table in BACKUP_TABLES:
+            table_payload = payload.get("tables", {}).get(table)
+            if not table_payload or table_payload.get("missing"):
+                continue
+            if not table_exists(table):
+                continue
+            cols_existing = get_table_columns(con, table)
+            rows = table_payload.get("rows", [])
+            # Use only columns that exist in current schema.
+            backup_cols = table_payload.get("columns") or []
+            cols = [c for c in backup_cols if c in cols_existing]
+            if not cols:
+                continue
+
+            con.execute(f"DELETE FROM {table}")
+            placeholders = ",".join(["?"] * len(cols))
+            col_list = ",".join(cols)
+            for obj in rows:
+                vals = [_restore_value(table, c, obj.get(c)) for c in cols]
+                con.execute(f"INSERT INTO {table} ({col_list}) VALUES ({placeholders})", tuple(vals))
+            restored[table] = len(rows)
+        con.commit()
+    except Exception as e:
+        try:
+            con.con.rollback()
+        except Exception:
+            pass
+        con.close()
+        flash('Restore failed: ' + str(e))
+        return redirect('/admin/backup')
+    finally:
+        try:
+            con.close()
+        except Exception:
+            pass
+
+    # Reset PostgreSQL sequences after explicit id inserts.
+    con = db()
+    try:
+        for table in ["users", "ticket_links", "ticket_attachments", "audit_log", "job_history"]:
+            reset_pg_sequence_if_needed(con, table)
+    finally:
+        con.close()
+
+    log('RESTORE_BACKUP', ', '.join([f"{k}:{v}" for k,v in restored.items()]))
+    flash('Backup restored: ' + ', '.join([f"{k}={v}" for k,v in restored.items()]))
+    return redirect('/admin/backup')
+
+
 @app.route('/admin/ticket_cleanup')
 @login_required
 @role_required('admin')
@@ -4097,7 +4407,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v48.3 Mobile Cleanup + History Links')
+    print('PMW Ticket + Fabrication APP v49 Backup System')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
