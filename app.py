@@ -23,7 +23,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v50.1 Vertical Sort Next"
+APP_VERSION = "v50.2 Unassigned Ticket Alert"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -1677,7 +1677,7 @@ BASE = """
 }
 
 
-/* ===== v50.1 Vertical Sort Next Fix ===== */
+/* ===== v50.2 Unassigned Ticket Alert Fix ===== */
 @media (max-width: 800px){
   html, body{
     max-width:100vw;
@@ -1876,7 +1876,7 @@ BASE = """
 }
 
 
-/* ===== v50.1 Vertical Sort Next ===== */
+/* ===== v50.2 Unassigned Ticket Alert ===== */
 @media (max-width: 800px){
   html, body{
     max-width:100vw;
@@ -2027,7 +2027,7 @@ BASE = """
 }
 
 
-/* ===== v50.1 Vertical Sort Next ===== */
+/* ===== v50.2 Unassigned Ticket Alert ===== */
 @media (max-width: 800px){
   html, body{
     padding-bottom: calc(220px + env(safe-area-inset-bottom)) !important;
@@ -2126,6 +2126,47 @@ BASE = """
   }
 }
 
+
+/* ===== v50.2 Unassigned Ticket Alert ===== */
+.ticketAlert{
+  margin:8px 0;
+  padding:10px 12px;
+  border-radius:6px;
+  font-size:17px;
+  font-weight:500;
+}
+.ticketAlert a{
+  margin-left:10px;
+  color:#073763;
+  background:white;
+  border:1px solid #999;
+  padding:5px 8px;
+  border-radius:4px;
+  text-decoration:none;
+  font-weight:bold;
+}
+.ticketAlertRed{
+  background:#f8d7da;
+  border:2px solid #b42318;
+  color:#7f1d1d;
+}
+.ticketAlertGreen{
+  background:#d4edda;
+  border:2px solid #0f7b2f;
+  color:#0f5132;
+}
+@media(max-width:800px){
+  .ticketAlert{
+    font-size:16px;
+    margin:8px 4px;
+  }
+  .ticketAlert a{
+    display:inline-block;
+    margin-top:6px;
+    margin-left:0;
+  }
+}
+
 </style>
 <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
@@ -2164,6 +2205,32 @@ def login():
 @app.route('/logout')
 def logout(): session.clear(); return redirect('/login')
 
+
+# ===== UNASSIGNED TICKET ALERT v50.2 =====
+def unassigned_ticket_count():
+    try:
+        con = db()
+        row = con.execute("""SELECT COUNT(*) AS n FROM ticket_links
+                             WHERE COALESCE(scheduled_status,'') <> 'scheduled'""").fetchone()
+        con.close()
+        return int((row["n"] if row else 0) or 0)
+    except Exception:
+        return 0
+
+def unassigned_ticket_alert_html():
+    n = unassigned_ticket_count()
+    if n > 0:
+        word = "ticket" if n == 1 else "tickets"
+        return f"""<div class='ticketAlert ticketAlertRed'>
+            🔴 <b>{n} unassigned {word}</b>
+            <span>need to be added to Fabrication or Numbering.</span>
+            <a href='/tickets?status=unscheduled'>Open Tickets</a>
+        </div>"""
+    return """<div class='ticketAlert ticketAlertGreen'>
+        🟢 <b>All tickets assigned</b>
+    </div>"""
+
+
 @app.route('/')
 @login_required
 def index():
@@ -2199,6 +2266,7 @@ def index():
 <span class='small'>Drag across cells or Ctrl+click to format many cells.</span>
 </div>"""
     body=f"<div class='toolbar'><b>Excel-style workbook</b><span class='small'>{note}</span>{color_html}<span class='grow'></span>{import_html}</div><div class='tabs'>{tabs}</div><div id='saveStatus' style='position:fixed;right:8px;top:48px;z-index:2000;background:#fff3cd;border:1px solid #d6b656;padding:3px 8px;font-size:12px;display:none'>Saved</div>"
+    body += unassigned_ticket_alert_html()
     if editable:
         body += "<div class='mobileTop'><button type='button' class='red' onclick=\"setCellColor('#ff6666')\">Red</button><button type='button' class='yellow' onclick=\"setCellColor('#fff066')\">Yellow</button><button type='button' class='green' onclick=\"setCellColor('#93d050')\">Green</button><button type='button' class='blue' onclick=\"setCellColor('#9dc3e6')\">Blue</button><button type='button' class='white' onclick=\"setCellColor('#ffffff')\">White</button><button type='button' onclick=\"setCellColor('')\">Clear</button><button type='button' onclick=\"toggleBold()\"><b>B</b></button><button type='button' onclick=\"openRichTextEditor()\">Words</button><button type='button' onclick=\"clearSelectedCells()\">Clear</button><button type='button' onclick=\"mobileZoomOut()\">Zoom -</button><button type='button' onclick=\"mobileZoomIn()\">Zoom +</button><span class='mobileZoomLabel' id='mobileZoomLabel'>100%</span></div>"
     if editable:
@@ -2768,7 +2836,7 @@ function clearSelectedCells(){
   });
 }
 
-// ===== v50.1 Vertical Sort Next =====
+// ===== v50.2 Unassigned Ticket Alert =====
 (function(){
   const AUTO_REFRESH_MS = 5 * 60 * 1000;
   const RETURN_REFRESH_AFTER_MS = 45 * 1000;
@@ -4680,7 +4748,7 @@ def tickets():
         rows=con.execute("""SELECT * FROM ticket_links WHERE job_number LIKE ? OR subject LIKE ? OR sender LIKE ?
                             ORDER BY id DESC LIMIT 200""",(f'%{q}%',f'%{q}%',f'%{q}%')).fetchall()
     else:
-        rows=con.execute("SELECT * FROM ticket_links ORDER BY id DESC LIMIT 200").fetchall()
+        status_filter=request.args.get('status','').strip(); rows=con.execute("SELECT * FROM ticket_links WHERE COALESCE(scheduled_status,'') <> 'scheduled' ORDER BY id DESC LIMIT 200").fetchall() if status_filter=='unscheduled' else con.execute("SELECT * FROM ticket_links ORDER BY id DESC LIMIT 200").fetchall()
     con.close()
     body="<div class='toolbar'><b>Imported Tickets</b><form style='display:inline-flex;gap:5px;margin-left:10px'><input name='q' value='"+html.escape(q, quote=True)+"' placeholder='Search job, subject, sender'><button>Search</button></form><span class='small'>Use Add to Numbering/Fabrication to place a linked ticket on the schedule.</span></div>"
     body+="<table class='admin'><tr><th>Status</th><th>Received</th><th>Job</th><th>Subject</th><th>Sender</th><th>Email Link</th><th>Cloud Upload</th><th>Add to Schedule</th></tr>"
@@ -5346,7 +5414,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v50.1 Vertical Sort Next')
+    print('PMW Ticket + Fabrication APP v50.2 Unassigned Ticket Alert')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)

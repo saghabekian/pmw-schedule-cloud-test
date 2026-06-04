@@ -1,0 +1,12 @@
+PMW Render v50.2 Unassigned Ticket Alert
+
+Built from v50.1.
+
+Adds:
+- Red alert at top of Schedule page when tickets are not assigned.
+- Shows count of tickets not added to Fabrication or Numbering.
+- Click Open Tickets to view unassigned tickets.
+- Green alert when all tickets are assigned.
+
+A ticket is assigned when scheduled_status='scheduled', which happens after Add to Fabrication or Add to Numbering.
+No other app features changed.
