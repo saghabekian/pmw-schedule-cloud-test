@@ -1,0 +1,18 @@
+PMW Render v49.3 Mobile Logo Fix
+
+Built from v49.2.
+
+Adds:
+- PMW logo as iPhone Add-to-Home icon
+- favicon
+- web app manifest
+
+Mobile fixes:
+- Ticket/admin pages scroll horizontally in portrait.
+- Top toolbars/buttons scroll horizontally in portrait.
+- Schedule area supports pinch zoom on mobile.
+- Reset Zoom button added.
+- Floating green mobile buttons stay removed.
+- Snip popup fits portrait width better.
+
+No intended changes to database, tickets, job history, backup, cleanup, print, or snip generation.
