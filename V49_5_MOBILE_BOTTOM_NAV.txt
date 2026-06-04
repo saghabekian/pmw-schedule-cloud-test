@@ -1,0 +1,11 @@
+PMW Render v49.5 Mobile Bottom Nav
+
+Built from stable v49.2, not v49.4.
+
+Fixes:
+- Adds bottom mobile page nav so iPhone users can switch pages without using top tabs.
+- Adds bottom mobile schedule action bar with function buttons.
+- Adds Schedule + / Schedule - / Reset Zoom buttons.
+- Keeps PMW logo icon.
+- Avoids fullscreen iPhone meta that caused top-bar issues.
+- Improves ticket/admin horizontal scrolling.

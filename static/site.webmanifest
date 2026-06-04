@@ -1,5 +1,5 @@
 {
-"name":"PMW Schedule","short_name":"PMW","start_url":"/","display":"standalone",
+"name":"PMW Schedule","short_name":"PMW","start_url":"/","display":"browser",
 "background_color":"#0b1f14","theme_color":"#0f7b2f",
 "icons":[{"src":"/static/icon-192.png","sizes":"192x192","type":"image/png"},{"src":"/static/icon-512.png","sizes":"512x512","type":"image/png"}]
 }
