@@ -1,0 +1,3 @@
+PMW Render v49.4 Mobile Repair
+
+Restores bottom mobile function buttons, adds PMW icon, schedule zoom controls, and improves portrait table scrolling.

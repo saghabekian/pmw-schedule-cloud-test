@@ -23,7 +23,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v49.3 Mobile Logo Fix"
+APP_VERSION = "v49.4 Mobile Repair"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -1509,106 +1509,24 @@ BASE = """
 .mobileFab{display:none!important}.mobileFab button{display:none!important}
 .btn.green,button.green{background:#93d050!important;border:1px solid #38761d!important;font-weight:bold}.btn.red,button.red{background:#d9534f!important;color:white!important;border:1px solid #842029!important}
 
-/* ===== v49.3 Mobile portrait fixes ===== */
+/* ===== v49.4 Mobile Repair ===== */
 @media (max-width: 800px){
-  html, body{
-    overflow-x:auto !important;
-    -webkit-text-size-adjust:100%;
-    touch-action: pan-x pan-y pinch-zoom;
-  }
-
-  .tabs, .toolbar, .colorbar{
-    max-width:100vw;
-    overflow-x:auto !important;
-    overflow-y:hidden;
-    white-space:nowrap;
-    -webkit-overflow-scrolling:touch;
-    padding-bottom:6px;
-  }
-
-  .tabs a, .toolbar a, .toolbar button, .colorbar button, .buttons button{
-    display:inline-block;
-    min-height:40px;
-    margin:3px;
-    font-size:16px;
-  }
-
-  .workspace{
-    width:100vw !important;
-    max-width:100vw !important;
-    overflow-x:auto !important;
-    -webkit-overflow-scrolling:touch;
-    touch-action: pan-x pan-y pinch-zoom;
-  }
-
-  .sheetline{
-    overflow:visible !important;
-    width:max-content !important;
-    min-width:1000px;
-    touch-action: pan-x pan-y pinch-zoom;
-  }
-
-  .sheetwrap{
-    transform-origin: top left;
-    touch-action: pan-x pan-y pinch-zoom;
-  }
-
-  table.sheet{
-    min-width:1000px;
-  }
-
-  table.admin{
-    display:block;
-    width:max-content;
-    min-width:900px;
-    max-width:none;
-    overflow-x:auto;
-    -webkit-overflow-scrolling:touch;
-  }
-
-  .admin th, .admin td{
-    white-space:nowrap;
-    font-size:14px;
-    padding:8px;
-  }
-
-  .userform{
-    max-width:100vw;
-    overflow-x:auto;
-    -webkit-overflow-scrolling:touch;
-  }
-
-  input, select, textarea, button{
-    font-size:16px !important;
-  }
-
-  .buttons{
-    position:static !important;
-    width:100vw !important;
-    max-width:100vw !important;
-    display:block !important;
-    overflow-x:auto !important;
-    white-space:nowrap;
-    -webkit-overflow-scrolling:touch;
-    padding:8px 4px 20px 4px !important;
-  }
-
-  .buttons button{
-    width:auto !important;
-    min-width:130px;
-  }
-
-  .mobileFab{
-    display:none!important;
-  }
-
-  #snipBox{
-    left:8px!important;
-    right:8px!important;
-    top:70px!important;
-    width:auto!important;
-    max-width:calc(100vw - 16px)!important;
-  }
+  html, body{max-width:100vw;overflow-x:auto!important;-webkit-text-size-adjust:100%;}
+  .tabs,.toolbar,.colorbar{max-width:100vw;overflow-x:auto!important;white-space:nowrap;-webkit-overflow-scrolling:touch;padding-bottom:6px;}
+  .tabs a,.toolbar a,.toolbar button,.colorbar button{display:inline-block;min-height:40px;margin:3px;font-size:16px!important;}
+  .workspace{width:100vw!important;max-width:100vw!important;overflow-x:auto!important;-webkit-overflow-scrolling:touch;}
+  .sheetline{overflow-x:auto!important;overflow-y:visible!important;max-width:100vw!important;width:100vw!important;-webkit-overflow-scrolling:touch;}
+  .sheetwrap{transform-origin:top left;width:max-content!important;min-width:1000px;}
+  table.sheet{min-width:1000px;}
+  .buttons{width:100vw!important;max-width:100vw!important;display:block!important;overflow-x:auto!important;white-space:nowrap!important;-webkit-overflow-scrolling:touch;padding:8px 4px 12px 4px!important;}
+  .buttons button{display:inline-block!important;width:auto!important;min-width:120px;min-height:42px;margin:3px;font-size:16px!important;}
+  .mobileFab{display:block!important;position:static!important;width:100vw!important;max-width:100vw!important;overflow-x:auto!important;overflow-y:hidden!important;white-space:nowrap!important;-webkit-overflow-scrolling:touch;background:#0f7b2f;padding:8px 4px 14px 4px;margin-top:6px;box-sizing:border-box;}
+  .mobileFab button{display:inline-block!important;position:static!important;width:auto!important;min-width:125px;min-height:44px;margin:3px;padding:8px 10px;border-radius:6px;background:white;color:#111;border:1px solid #38761d;font-size:16px!important;font-weight:bold;}
+  table.admin{display:block;width:max-content;min-width:1000px;max-width:none;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .admin th,.admin td{white-space:nowrap;font-size:14px;padding:8px;}
+  .userform{max-width:100vw;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  input,select,textarea,button{font-size:16px!important;}
+  #snipBox{left:8px!important;right:8px!important;top:70px!important;width:auto!important;max-width:calc(100vw - 16px)!important;}
 }
 
 </style>
@@ -1743,7 +1661,17 @@ def index():
 <button type='button' class='green' onclick='markSelectedComplete()'>Mark Complete</button>
 <button type='button' onclick='window.print()'>Browser Print</button>
 <button type='button' onclick='openSnipBox()'>Snip / Print / Email</button>
-<button type='button' onclick='pmwZoomReset()'>Reset Zoom</button>
+</div>
+<div class='mobileFab'>
+<button type='submit' name='cmd' value='email_schedule'>Email PDF</button>
+<button type='submit' name='cmd' value='print_pdf'>Print PDF</button>
+<button type='submit' name='cmd' value='sort_numbering'>Sort Numbering</button>
+<button type='submit' name='cmd' value='sort_fabrication'>Sort Fabrication</button>
+<button type='button' onclick='openSnipBox()'>Snip / Print / Email</button>
+<button type='button' onclick='markSelectedComplete()'>Mark Complete</button>
+<button type='button' onclick='pmwScheduleZoomOut()'>Schedule -</button>
+<button type='button' onclick='pmwScheduleZoomIn()'>Schedule +</button>
+<button type='button' onclick='pmwScheduleZoomReset()'>Reset Schedule</button>
 </div>"""
     body += "</div>"
     if editable:
@@ -2204,7 +2132,7 @@ function clearSelectedCells(){
   });
 }
 
-// ===== v49.3 Mobile Logo Fix =====
+// ===== v49.4 Mobile Repair =====
 (function(){
   const AUTO_REFRESH_MS = 5 * 60 * 1000;
   const RETURN_REFRESH_AFTER_MS = 45 * 1000;
@@ -2309,58 +2237,27 @@ function markSelectedComplete(){
 }
 
 
-// ===== v49.3 Schedule pinch zoom for mobile =====
+// ===== v49.4 Separate schedule zoom controls =====
 (function(){
-  let pinchStartDist = 0;
-  let pinchStartZoom = 1;
   window.pmwScheduleZoom = window.pmwScheduleZoom || 1.0;
-
-  function getDist(touches){
-    const dx = touches[0].clientX - touches[1].clientX;
-    const dy = touches[0].clientY - touches[1].clientY;
-    return Math.sqrt(dx*dx + dy*dy);
-  }
-
-  function applyScheduleZoom(){
+  function apply(){
     const wrap = document.querySelector('.sheetwrap');
     if(!wrap) return;
-    const z = Math.max(0.55, Math.min(2.8, window.pmwScheduleZoom || 1));
+    const z = Math.max(0.55, Math.min(2.5, window.pmwScheduleZoom || 1));
     window.pmwScheduleZoom = z;
     wrap.style.transform = 'scale(' + z + ')';
     wrap.style.transformOrigin = 'top left';
     wrap.style.width = (100 / z) + '%';
+    wrap.style.marginBottom = Math.max(0, (z - 1) * 700) + 'px';
     try{ localStorage.setItem('pmw_schedule_zoom', String(z)); }catch(e){}
   }
-
+  window.pmwScheduleZoomIn=function(){ window.pmwScheduleZoom=(window.pmwScheduleZoom||1)+0.12; apply(); };
+  window.pmwScheduleZoomOut=function(){ window.pmwScheduleZoom=(window.pmwScheduleZoom||1)-0.12; apply(); };
+  window.pmwScheduleZoomReset=function(){ window.pmwScheduleZoom=1; apply(); };
   window.addEventListener('load', function(){
-    try{
-      const saved = parseFloat(localStorage.getItem('pmw_schedule_zoom') || '1');
-      if(saved && !isNaN(saved)) window.pmwScheduleZoom = saved;
-    }catch(e){}
-    applyScheduleZoom();
+    try{ const saved=parseFloat(localStorage.getItem('pmw_schedule_zoom')||'1'); if(saved&&!isNaN(saved)) window.pmwScheduleZoom=saved; }catch(e){}
+    apply();
   });
-
-  document.addEventListener('touchstart', function(e){
-    const sheetArea = e.target.closest && e.target.closest('.workspace, .sheetline, .sheetwrap, table.sheet');
-    if(sheetArea && e.touches && e.touches.length === 2){
-      pinchStartDist = getDist(e.touches);
-      pinchStartZoom = window.pmwScheduleZoom || 1;
-    }
-  }, {passive:true});
-
-  document.addEventListener('touchmove', function(e){
-    const sheetArea = e.target.closest && e.target.closest('.workspace, .sheetline, .sheetwrap, table.sheet');
-    if(sheetArea && e.touches && e.touches.length === 2 && pinchStartDist){
-      const d = getDist(e.touches);
-      window.pmwScheduleZoom = pinchStartZoom * (d / pinchStartDist);
-      applyScheduleZoom();
-    }
-  }, {passive:true});
-
-  window.pmwZoomReset = function(){
-    window.pmwScheduleZoom = 1;
-    applyScheduleZoom();
-  };
 })();
 
 </script>
@@ -4681,7 +4578,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v49.3 Mobile Logo Fix')
+    print('PMW Ticket + Fabrication APP v49.4 Mobile Repair')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
