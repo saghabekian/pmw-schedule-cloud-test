@@ -23,7 +23,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v49.9 Mobile Number Keyboard"
+APP_VERSION = "v50 Mobile Next Keyboard"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -1677,7 +1677,7 @@ BASE = """
 }
 
 
-/* ===== v49.9 Mobile Number Keyboard Fix ===== */
+/* ===== v50 Mobile Next Keyboard Fix ===== */
 @media (max-width: 800px){
   html, body{
     max-width:100vw;
@@ -1876,7 +1876,7 @@ BASE = """
 }
 
 
-/* ===== v49.9 Mobile Number Keyboard ===== */
+/* ===== v50 Mobile Next Keyboard ===== */
 @media (max-width: 800px){
   html, body{
     max-width:100vw;
@@ -2027,7 +2027,7 @@ BASE = """
 }
 
 
-/* ===== v49.9 Mobile Number Keyboard ===== */
+/* ===== v50 Mobile Next Keyboard ===== */
 @media (max-width: 800px){
   html, body{
     padding-bottom: calc(220px + env(safe-area-inset-bottom)) !important;
@@ -2281,7 +2281,7 @@ def index():
                 if rich:
                     body += f"<td style='{style}' data-row='{r}' data-col='{c}'><div class='cellbox'><div class='cellinput richCell' contenteditable='true' data-row='{r}' data-col='{c}' style='{style}'>{rich}</div><input class='plainHidden' name='cell_{r}_{c}' data-row='{r}' data-col='{c}' value='{html.escape(v, quote=True)}' autocomplete='off'><input type='hidden' name='bg_{r}_{c}' value='{html.escape(bg, quote=True)}'><input type='hidden' name='txt_{r}_{c}' value='{html.escape(txt, quote=True)}'><input type='hidden' name='link_{r}_{c}' value='{html.escape(link, quote=True)}'><input type='hidden' name='label_{r}_{c}' value='{html.escape(label, quote=True)}'><input type='hidden' name='fsize_{r}_{c}' value='{html.escape(fsize, quote=True)}'><input type='hidden' name='bold_{r}_{c}' value='{html.escape(bold, quote=True)}'><input type='hidden' name='rich_{r}_{c}' value='{html.escape(rich, quote=True)}'><input type='hidden' name='loaded_{r}_{c}' value='{html.escape(m.get('updated_at','') or '', quote=True)}'>{link_html}</div></td>"
                 else:
-                    body += f"<td style='{style}' data-row='{r}' data-col='{c}'><div class='cellbox'><input class='cellinput {cls}' name='cell_{r}_{c}' data-row='{r}' data-col='{c}' style='{style}' value='{html.escape(v, quote=True)}' autocomplete='off' {("inputmode='numeric' pattern='[0-9]*' enterkeyhint='next'" if c in (1,4) else "")}><input type='hidden' name='bg_{r}_{c}' value='{html.escape(bg, quote=True)}'><input type='hidden' name='txt_{r}_{c}' value='{html.escape(txt, quote=True)}'><input type='hidden' name='link_{r}_{c}' value='{html.escape(link, quote=True)}'><input type='hidden' name='label_{r}_{c}' value='{html.escape(label, quote=True)}'><input type='hidden' name='fsize_{r}_{c}' value='{html.escape(fsize, quote=True)}'><input type='hidden' name='bold_{r}_{c}' value='{html.escape(bold, quote=True)}'><input type='hidden' name='rich_{r}_{c}' value='{html.escape(rich, quote=True)}'><input type='hidden' name='loaded_{r}_{c}' value='{html.escape(m.get('updated_at','') or '', quote=True)}'>{link_html}</div></td>"
+                    body += f"<td style='{style}' data-row='{r}' data-col='{c}'><div class='cellbox'><input class='cellinput {cls}' name='cell_{r}_{c}' data-row='{r}' data-col='{c}' style='{style}' value='{html.escape(v, quote=True)}' autocomplete='off' {("inputmode='tel' enterkeyhint='next'" if c in (1,4) else "")}><input type='hidden' name='bg_{r}_{c}' value='{html.escape(bg, quote=True)}'><input type='hidden' name='txt_{r}_{c}' value='{html.escape(txt, quote=True)}'><input type='hidden' name='link_{r}_{c}' value='{html.escape(link, quote=True)}'><input type='hidden' name='label_{r}_{c}' value='{html.escape(label, quote=True)}'><input type='hidden' name='fsize_{r}_{c}' value='{html.escape(fsize, quote=True)}'><input type='hidden' name='bold_{r}_{c}' value='{html.escape(bold, quote=True)}'><input type='hidden' name='rich_{r}_{c}' value='{html.escape(rich, quote=True)}'><input type='hidden' name='loaded_{r}_{c}' value='{html.escape(m.get('updated_at','') or '', quote=True)}'>{link_html}</div></td>"
             else:
                 body += f"<td style='{style}'>{rich if rich else html.escape(v)} {link_html}</td>"
         body += "</tr>"
@@ -2768,7 +2768,7 @@ function clearSelectedCells(){
   });
 }
 
-// ===== v49.9 Mobile Number Keyboard =====
+// ===== v50 Mobile Next Keyboard =====
 (function(){
   const AUTO_REFRESH_MS = 5 * 60 * 1000;
   const RETURN_REFRESH_AFTER_MS = 45 * 1000;
@@ -2949,25 +2949,39 @@ function markSelectedComplete(){
 })();
 
 
-// ===== v49.9 Faster mobile sort number entry =====
+
+// ===== v50 Faster mobile sort number entry with iPhone Next =====
 document.addEventListener('keydown', function(e){
   const el = e.target;
   if(!el || !el.classList || !el.classList.contains('numinput')) return;
-  if(e.key === 'Enter'){
+
+  if(e.key === 'Enter' || e.key === 'Next'){
     e.preventDefault();
     try{
+      if(typeof autosaveCell === 'function') autosaveCell(el);
       const r = parseInt(el.dataset.row || '0', 10);
       const c = parseInt(el.dataset.col || '0', 10);
       const next = document.querySelector(`.cellinput[data-row="${r+1}"][data-col="${c}"]`);
       if(next){
-        next.focus();
-        if(next.select) next.select();
+        setTimeout(function(){
+          next.focus();
+          if(next.select) next.select();
+        }, 80);
       }else{
         el.blur();
       }
     }catch(err){
       el.blur();
     }
+  }
+}, true);
+
+document.addEventListener('focusin', function(e){
+  const el = e.target;
+  if(el && el.classList && el.classList.contains('numinput')){
+    setTimeout(function(){
+      try{ if(el.select) el.select(); }catch(err){}
+    }, 80);
   }
 }, true);
 
@@ -5289,7 +5303,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v49.9 Mobile Number Keyboard')
+    print('PMW Ticket + Fabrication APP v50 Mobile Next Keyboard')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)

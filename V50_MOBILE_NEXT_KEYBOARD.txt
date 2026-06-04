@@ -1,0 +1,11 @@
+PMW Render v50 Mobile Next Keyboard
+
+Built from v49.9.
+
+Changes:
+- Sort/order cells use inputmode='tel' and enterkeyhint='next'.
+- iPhone should show a phone-style number keypad with a Next button where supported.
+- Pressing Next/Enter saves and jumps to the next sort/order cell below.
+- When the next sort/order cell is focused, its existing number is selected so you can type over it immediately.
+
+No other app features changed.
