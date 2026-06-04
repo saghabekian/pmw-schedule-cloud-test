@@ -23,7 +23,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v50 Mobile Next Keyboard"
+APP_VERSION = "v50.1 Vertical Sort Next"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -1677,7 +1677,7 @@ BASE = """
 }
 
 
-/* ===== v50 Mobile Next Keyboard Fix ===== */
+/* ===== v50.1 Vertical Sort Next Fix ===== */
 @media (max-width: 800px){
   html, body{
     max-width:100vw;
@@ -1876,7 +1876,7 @@ BASE = """
 }
 
 
-/* ===== v50 Mobile Next Keyboard ===== */
+/* ===== v50.1 Vertical Sort Next ===== */
 @media (max-width: 800px){
   html, body{
     max-width:100vw;
@@ -2027,7 +2027,7 @@ BASE = """
 }
 
 
-/* ===== v50 Mobile Next Keyboard ===== */
+/* ===== v50.1 Vertical Sort Next ===== */
 @media (max-width: 800px){
   html, body{
     padding-bottom: calc(220px + env(safe-area-inset-bottom)) !important;
@@ -2281,7 +2281,7 @@ def index():
                 if rich:
                     body += f"<td style='{style}' data-row='{r}' data-col='{c}'><div class='cellbox'><div class='cellinput richCell' contenteditable='true' data-row='{r}' data-col='{c}' style='{style}'>{rich}</div><input class='plainHidden' name='cell_{r}_{c}' data-row='{r}' data-col='{c}' value='{html.escape(v, quote=True)}' autocomplete='off'><input type='hidden' name='bg_{r}_{c}' value='{html.escape(bg, quote=True)}'><input type='hidden' name='txt_{r}_{c}' value='{html.escape(txt, quote=True)}'><input type='hidden' name='link_{r}_{c}' value='{html.escape(link, quote=True)}'><input type='hidden' name='label_{r}_{c}' value='{html.escape(label, quote=True)}'><input type='hidden' name='fsize_{r}_{c}' value='{html.escape(fsize, quote=True)}'><input type='hidden' name='bold_{r}_{c}' value='{html.escape(bold, quote=True)}'><input type='hidden' name='rich_{r}_{c}' value='{html.escape(rich, quote=True)}'><input type='hidden' name='loaded_{r}_{c}' value='{html.escape(m.get('updated_at','') or '', quote=True)}'>{link_html}</div></td>"
                 else:
-                    body += f"<td style='{style}' data-row='{r}' data-col='{c}'><div class='cellbox'><input class='cellinput {cls}' name='cell_{r}_{c}' data-row='{r}' data-col='{c}' style='{style}' value='{html.escape(v, quote=True)}' autocomplete='off' {("inputmode='tel' enterkeyhint='next'" if c in (1,4) else "")}><input type='hidden' name='bg_{r}_{c}' value='{html.escape(bg, quote=True)}'><input type='hidden' name='txt_{r}_{c}' value='{html.escape(txt, quote=True)}'><input type='hidden' name='link_{r}_{c}' value='{html.escape(link, quote=True)}'><input type='hidden' name='label_{r}_{c}' value='{html.escape(label, quote=True)}'><input type='hidden' name='fsize_{r}_{c}' value='{html.escape(fsize, quote=True)}'><input type='hidden' name='bold_{r}_{c}' value='{html.escape(bold, quote=True)}'><input type='hidden' name='rich_{r}_{c}' value='{html.escape(rich, quote=True)}'><input type='hidden' name='loaded_{r}_{c}' value='{html.escape(m.get('updated_at','') or '', quote=True)}'>{link_html}</div></td>"
+                    body += f"<td style='{style}' data-row='{r}' data-col='{c}'><div class='cellbox'><input class='cellinput {cls}' name='cell_{r}_{c}' data-row='{r}' data-col='{c}' style='{style}' value='{html.escape(v, quote=True)}' autocomplete='off' {("inputmode='tel' enterkeyhint='next' tabindex='" + str((r-2) if c==1 else (100+r-2)) + "'" if c in (1,4) else "tabindex='" + str(1000 + (r*10) + c) + "'")}><input type='hidden' name='bg_{r}_{c}' value='{html.escape(bg, quote=True)}'><input type='hidden' name='txt_{r}_{c}' value='{html.escape(txt, quote=True)}'><input type='hidden' name='link_{r}_{c}' value='{html.escape(link, quote=True)}'><input type='hidden' name='label_{r}_{c}' value='{html.escape(label, quote=True)}'><input type='hidden' name='fsize_{r}_{c}' value='{html.escape(fsize, quote=True)}'><input type='hidden' name='bold_{r}_{c}' value='{html.escape(bold, quote=True)}'><input type='hidden' name='rich_{r}_{c}' value='{html.escape(rich, quote=True)}'><input type='hidden' name='loaded_{r}_{c}' value='{html.escape(m.get('updated_at','') or '', quote=True)}'>{link_html}</div></td>"
             else:
                 body += f"<td style='{style}'>{rich if rich else html.escape(v)} {link_html}</td>"
         body += "</tr>"
@@ -2768,7 +2768,7 @@ function clearSelectedCells(){
   });
 }
 
-// ===== v50 Mobile Next Keyboard =====
+// ===== v50.1 Vertical Sort Next =====
 (function(){
   const AUTO_REFRESH_MS = 5 * 60 * 1000;
   const RETURN_REFRESH_AFTER_MS = 45 * 1000;
@@ -2950,40 +2950,83 @@ function markSelectedComplete(){
 
 
 
-// ===== v50 Faster mobile sort number entry with iPhone Next =====
-document.addEventListener('keydown', function(e){
-  const el = e.target;
-  if(!el || !el.classList || !el.classList.contains('numinput')) return;
 
-  if(e.key === 'Enter' || e.key === 'Next'){
-    e.preventDefault();
+// ===== v50.1 Vertical sort number entry =====
+(function(){
+  function nextSortCellBelow(el){
+    const r = parseInt(el.dataset.row || '0', 10);
+    const c = parseInt(el.dataset.col || '0', 10);
+    if(!(c === 1 || c === 4)) return null;
+
+    for(let nr = r + 1; nr <= 50; nr++){
+      const next = document.querySelector(`.cellinput[data-row="${nr}"][data-col="${c}"]`);
+      if(next) return next;
+    }
+    return null;
+  }
+
+  function moveDown(el){
     try{
       if(typeof autosaveCell === 'function') autosaveCell(el);
-      const r = parseInt(el.dataset.row || '0', 10);
-      const c = parseInt(el.dataset.col || '0', 10);
-      const next = document.querySelector(`.cellinput[data-row="${r+1}"][data-col="${c}"]`);
-      if(next){
-        setTimeout(function(){
-          next.focus();
-          if(next.select) next.select();
-        }, 80);
-      }else{
-        el.blur();
-      }
-    }catch(err){
+    }catch(e){}
+    const next = nextSortCellBelow(el);
+    if(next){
+      setTimeout(function(){
+        next.focus();
+        if(next.select) next.select();
+      }, 80);
+    }else{
       el.blur();
     }
   }
-}, true);
 
-document.addEventListener('focusin', function(e){
-  const el = e.target;
-  if(el && el.classList && el.classList.contains('numinput')){
-    setTimeout(function(){
-      try{ if(el.select) el.select(); }catch(err){}
-    }, 80);
-  }
-}, true);
+  document.addEventListener('keydown', function(e){
+    const el = e.target;
+    if(!el || !el.classList || !el.classList.contains('numinput')) return;
+
+    if(e.key === 'Enter' || e.key === 'Tab'){
+      e.preventDefault();
+      moveDown(el);
+    }
+  }, true);
+
+  document.addEventListener('focusin', function(e){
+    const el = e.target;
+    if(el && el.classList && el.classList.contains('numinput')){
+      // Force iPhone-friendly sort input behavior every time it focuses.
+      el.setAttribute('inputmode','tel');
+      el.setAttribute('enterkeyhint','next');
+      setTimeout(function(){
+        try{ if(el.select) el.select(); }catch(err){}
+      }, 80);
+    }
+  }, true);
+
+  // iPhone Safari's Next key may move focus by tabindex before keydown is usable.
+  // This tab order is set vertically, but this backup also catches left/right jumps and corrects them.
+  let lastSortCell = null;
+  document.addEventListener('focusin', function(e){
+    const el = e.target;
+    if(el && el.classList && el.classList.contains('numinput')){
+      if(lastSortCell && lastSortCell !== el){
+        const oldCol = parseInt(lastSortCell.dataset.col || '0', 10);
+        const newCol = parseInt(el.dataset.col || '0', 10);
+        const oldRow = parseInt(lastSortCell.dataset.row || '0', 10);
+        const newRow = parseInt(el.dataset.row || '0', 10);
+        if((oldCol === 1 || oldCol === 4) && newCol !== oldCol && newRow === oldRow){
+          const corrected = nextSortCellBelow(lastSortCell);
+          if(corrected){
+            setTimeout(function(){
+              corrected.focus();
+              if(corrected.select) corrected.select();
+            }, 30);
+          }
+        }
+      }
+      lastSortCell = el;
+    }
+  }, true);
+})();
 
 </script>
 </form>"""
@@ -5303,7 +5346,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v50 Mobile Next Keyboard')
+    print('PMW Ticket + Fabrication APP v50.1 Vertical Sort Next')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)

@@ -1,0 +1,12 @@
+PMW Render v50.1 Vertical Sort Next
+
+Built from v50.
+
+Fixes iPhone sort/order entry:
+- iPhone Next/tab order now goes straight down the same sort/order column.
+- Numbering sort column goes 1,2,3,4 down.
+- Fabrication sort column goes 1,2,3,4 down separately.
+- Pressing Enter/Next saves current cell and moves to the sort cell directly below.
+- Next cell auto-selects existing value so you can type over it immediately.
+
+No other app features changed.
