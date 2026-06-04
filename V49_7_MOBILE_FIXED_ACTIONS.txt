@@ -1,0 +1,11 @@
+PMW Render v49.7 Mobile Fixed Actions
+
+Built from v49.6.
+
+Changes:
+- Schedule action buttons stay fixed at bottom on iPhone.
+- Action row scrolls left/right.
+- Includes Email PDF, Print PDF, Sort Numbering, Sort Fabrication, Snip / Print / Email, Mark Complete, Schedule -, Schedule +, Reset Zoom.
+- Page navigation stays fixed at the very bottom.
+- Adds bottom padding so buttons do not cover schedule cells.
+- Schedule zoom remains separate from page zoom.
