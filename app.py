@@ -23,7 +23,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v49.7 Mobile Fixed Actions"
+APP_VERSION = "v49.8 Mobile Formatting Toolbar"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -1677,7 +1677,7 @@ BASE = """
 }
 
 
-/* ===== v49.7 Mobile Fixed Actions Fix ===== */
+/* ===== v49.8 Mobile Formatting Toolbar Fix ===== */
 @media (max-width: 800px){
   html, body{
     max-width:100vw;
@@ -1876,7 +1876,7 @@ BASE = """
 }
 
 
-/* ===== v49.7 Mobile Fixed Actions ===== */
+/* ===== v49.8 Mobile Formatting Toolbar ===== */
 @media (max-width: 800px){
   html, body{
     max-width:100vw;
@@ -2026,6 +2026,91 @@ BASE = """
   .mobileActionBar,.mobileBottomNav,.scheduleZoomBar{display:none!important;}
 }
 
+
+/* ===== v49.8 Mobile Formatting Toolbar ===== */
+@media (max-width: 800px){
+  html, body{
+    padding-bottom: calc(220px + env(safe-area-inset-bottom)) !important;
+  }
+
+  .mobileTop{
+    display:none!important;
+  }
+
+  .mobileFormatBar{
+    display:block!important;
+    position:fixed!important;
+    left:0!important;
+    right:0!important;
+    bottom: calc(112px + env(safe-area-inset-bottom)) !important;
+    z-index:2002!important;
+    width:100vw!important;
+    max-width:100vw!important;
+    overflow-x:auto!important;
+    overflow-y:hidden!important;
+    white-space:nowrap!important;
+    -webkit-overflow-scrolling:touch;
+    background:#e8f3e8!important;
+    border-top:2px solid #38761d!important;
+    padding:7px 4px!important;
+    box-sizing:border-box!important;
+    box-shadow:0 -3px 8px rgba(0,0,0,.18)!important;
+  }
+
+  .mobileFormatBar button,.mobileFormatBar select{
+    display:inline-block!important;
+    position:static!important;
+    min-width:88px!important;
+    min-height:42px!important;
+    margin:3px!important;
+    padding:7px 9px!important;
+    border-radius:6px!important;
+    border:1px solid #777!important;
+    color:#111!important;
+    font-size:15px!important;
+    font-weight:bold!important;
+    vertical-align:middle!important;
+  }
+
+  .mobileFormatBar .mfLabel{
+    display:inline-block!important;
+    padding:9px 8px!important;
+    margin:3px!important;
+    background:#222!important;
+    color:white!important;
+    border-radius:6px!important;
+    font-size:14px!important;
+    font-weight:bold!important;
+    vertical-align:middle!important;
+  }
+
+  .mobileFormatBar .red{background:#ff6666!important;}
+  .mobileFormatBar .yellow{background:#fff066!important;}
+  .mobileFormatBar .green{background:#93d050!important;}
+  .mobileFormatBar .blue{background:#9dc3e6!important;}
+  .mobileFormatBar .white{background:#ffffff!important;}
+  .mobileFormatBar .clear{background:#ffffff!important;text-decoration:line-through;}
+  .mobileFormatBar .tred{background:#fff!important;color:#c00000!important;}
+  .mobileFormatBar .tyellow{background:#fff!important;color:#bf9000!important;}
+  .mobileFormatBar .tgreen{background:#fff!important;color:#00b050!important;}
+  .mobileFormatBar .tblue{background:#fff!important;color:#0070c0!important;}
+
+  .mobileActionBar{
+    bottom: calc(56px + env(safe-area-inset-bottom)) !important;
+  }
+
+  .mobileBottomNav{
+    bottom:0!important;
+  }
+
+  .buttons{
+    padding-bottom:160px!important;
+  }
+}
+@media (min-width:801px){
+  .mobileFormatBar{display:none!important;}
+}
+
 </style>
 <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
@@ -2101,6 +2186,32 @@ def index():
     body=f"<div class='toolbar'><b>Excel-style workbook</b><span class='small'>{note}</span>{color_html}<span class='grow'></span>{import_html}</div><div class='tabs'>{tabs}</div><div id='saveStatus' style='position:fixed;right:8px;top:48px;z-index:2000;background:#fff3cd;border:1px solid #d6b656;padding:3px 8px;font-size:12px;display:none'>Saved</div>"
     if editable:
         body += "<div class='mobileTop'><button type='button' class='red' onclick=\"setCellColor('#ff6666')\">Red</button><button type='button' class='yellow' onclick=\"setCellColor('#fff066')\">Yellow</button><button type='button' class='green' onclick=\"setCellColor('#93d050')\">Green</button><button type='button' class='blue' onclick=\"setCellColor('#9dc3e6')\">Blue</button><button type='button' class='white' onclick=\"setCellColor('#ffffff')\">White</button><button type='button' onclick=\"setCellColor('')\">Clear</button><button type='button' onclick=\"toggleBold()\"><b>B</b></button><button type='button' onclick=\"openRichTextEditor()\">Words</button><button type='button' onclick=\"clearSelectedCells()\">Clear</button><button type='button' onclick=\"mobileZoomOut()\">Zoom -</button><button type='button' onclick=\"mobileZoomIn()\">Zoom +</button><span class='mobileZoomLabel' id='mobileZoomLabel'>100%</span></div>"
+    if editable:
+        body += """<div class='mobileFormatBar'>
+<span class='mfLabel'>Cell</span>
+<button type='button' class='mf red' onclick="setCellColor('#ff6666')">Red</button>
+<button type='button' class='mf yellow' onclick="setCellColor('#fff066')">Yellow</button>
+<button type='button' class='mf green' onclick="setCellColor('#93d050')">Green</button>
+<button type='button' class='mf blue' onclick="setCellColor('#9dc3e6')">Blue</button>
+<button type='button' class='mf white' onclick="setCellColor('#ffffff')">White</button>
+<button type='button' class='mf clear' onclick="setCellColor('')">Clear Cell</button>
+<span class='mfLabel'>Text</span>
+<button type='button' class='mf tred' onclick="setTextColor('#c00000')">Red Text</button>
+<button type='button' class='mf tyellow' onclick="setTextColor('#bf9000')">Gold Text</button>
+<button type='button' class='mf tgreen' onclick="setTextColor('#00b050')">Green Text</button>
+<button type='button' class='mf tblue' onclick="setTextColor('#0070c0')">Blue Text</button>
+<button type='button' class='mf clear' onclick="setTextColor('')">Clear Text</button>
+<span class='mfLabel'>Size</span>
+<button type='button' onclick="setFontSize('10')">10</button>
+<button type='button' onclick="setFontSize('12')">12</button>
+<button type='button' onclick="setFontSize('14')">14</button>
+<button type='button' onclick="setFontSize('16')">16</button>
+<button type='button' onclick="setFontSize('18')">18</button>
+<button type='button' onclick="setFontSize('20')">20</button>
+<button type='button' onclick="toggleBold()"><b>Bold</b></button>
+<button type='button' onclick="openRichTextEditor()">Edit Words</button>
+<button type='button' onclick="clearSelectedCells()">Clear Cell + Link</button>
+</div>"""
     body += "<div class='workspace'>"
     if editable:
         sched_date = get_schedule_date_settings(active)
@@ -2642,7 +2753,7 @@ function clearSelectedCells(){
   });
 }
 
-// ===== v49.7 Mobile Fixed Actions =====
+// ===== v49.8 Mobile Formatting Toolbar =====
 (function(){
   const AUTO_REFRESH_MS = 5 * 60 * 1000;
   const RETURN_REFRESH_AFTER_MS = 45 * 1000;
@@ -5140,7 +5251,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v49.7 Mobile Fixed Actions')
+    print('PMW Ticket + Fabrication APP v49.8 Mobile Formatting Toolbar')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)

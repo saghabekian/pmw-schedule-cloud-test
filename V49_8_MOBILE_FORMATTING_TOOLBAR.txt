@@ -1,0 +1,13 @@
+PMW Render v49.8 Mobile Formatting Toolbar
+
+Built from v49.7.
+
+Adds a fixed horizontal mobile formatting toolbar:
+- Cell colors: red/yellow/green/blue/white/clear
+- Text colors: red/gold/green/blue/clear
+- Font sizes: 10/12/14/16/18/20
+- Bold
+- Edit Words
+- Clear Cell + Link
+
+It stays visible like the bottom action buttons and scrolls left/right on iPhone.
