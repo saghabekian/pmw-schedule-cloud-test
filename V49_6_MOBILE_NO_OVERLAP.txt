@@ -1,0 +1,10 @@
+PMW Render v49.6 Mobile No Overlap
+
+Fixes:
+- Mobile bottom nav no longer floats over cells.
+- Mobile action buttons no longer float over schedule.
+- Buttons become normal horizontal scroll rows.
+- Adds visible Schedule Zoom row above the schedule.
+- Schedule zoom uses Schedule + / Schedule - / Reset Zoom.
+- Zoom changes the schedule only, not the entire page.
+- PMW icon remains.

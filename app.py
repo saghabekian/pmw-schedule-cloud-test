@@ -23,7 +23,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v49.5 Mobile Bottom Nav"
+APP_VERSION = "v49.6 Mobile No Overlap"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -1676,6 +1676,205 @@ BASE = """
   .mobileBottomNav,.mobileActionBar{display:none!important;}
 }
 
+
+/* ===== v49.6 Mobile No Overlap Fix ===== */
+@media (max-width: 800px){
+  html, body{
+    max-width:100vw;
+    overflow-x:auto!important;
+    -webkit-text-size-adjust:100%;
+    padding-bottom:20px!important;
+  }
+
+  .tabs,.toolbar,.colorbar{
+    max-width:100vw;
+    overflow-x:auto!important;
+    white-space:nowrap!important;
+    -webkit-overflow-scrolling:touch;
+    padding-top:8px!important;
+    padding-bottom:8px!important;
+  }
+
+  .tabs a,.toolbar a,.toolbar button,.colorbar button{
+    display:inline-block!important;
+    min-height:42px!important;
+    margin:4px!important;
+    font-size:16px!important;
+  }
+
+  .workspace{
+    width:100vw!important;
+    max-width:100vw!important;
+    overflow-x:auto!important;
+    -webkit-overflow-scrolling:touch;
+  }
+
+  .sheetline{
+    width:100vw!important;
+    max-width:100vw!important;
+    overflow-x:auto!important;
+    overflow-y:visible!important;
+    -webkit-overflow-scrolling:touch;
+    padding-bottom:12px!important;
+  }
+
+  .sheetwrap{
+    transform-origin:top left!important;
+    width:max-content!important;
+    min-width:1000px!important;
+  }
+
+  table.sheet{min-width:1000px!important;}
+
+  .scheduleZoomBar{
+    display:block!important;
+    width:100vw!important;
+    max-width:100vw!important;
+    overflow-x:auto!important;
+    white-space:nowrap!important;
+    -webkit-overflow-scrolling:touch;
+    background:#d9ead3;
+    border-top:1px solid #6aa84f;
+    border-bottom:1px solid #6aa84f;
+    padding:8px 4px!important;
+    box-sizing:border-box;
+  }
+
+  .scheduleZoomBar button{
+    display:inline-block!important;
+    min-width:125px!important;
+    min-height:44px!important;
+    margin:3px!important;
+    background:#fff!important;
+    color:#111!important;
+    border:1px solid #38761d!important;
+    border-radius:6px!important;
+    font-size:16px!important;
+    font-weight:bold!important;
+  }
+
+  .buttons{
+    position:static!important;
+    width:100vw!important;
+    max-width:100vw!important;
+    display:block!important;
+    overflow-x:auto!important;
+    overflow-y:hidden!important;
+    white-space:nowrap!important;
+    -webkit-overflow-scrolling:touch;
+    padding:8px 4px 12px 4px!important;
+    margin:0!important;
+    background:#f3f3f3!important;
+    box-sizing:border-box!important;
+  }
+
+  .buttons button{
+    display:inline-block!important;
+    position:static!important;
+    width:auto!important;
+    min-width:125px!important;
+    min-height:44px!important;
+    margin:3px!important;
+    font-size:16px!important;
+  }
+
+  .mobileActionBar{
+    display:block!important;
+    position:static!important;
+    width:100vw!important;
+    max-width:100vw!important;
+    overflow-x:auto!important;
+    overflow-y:hidden!important;
+    white-space:nowrap!important;
+    -webkit-overflow-scrolling:touch;
+    background:#0f7b2f!important;
+    padding:8px 4px 12px 4px!important;
+    margin:0!important;
+    box-sizing:border-box!important;
+    z-index:auto!important;
+  }
+
+  .mobileActionBar button{
+    display:inline-block!important;
+    position:static!important;
+    width:auto!important;
+    min-width:125px!important;
+    min-height:44px!important;
+    margin:3px!important;
+    border-radius:6px!important;
+    background:white!important;
+    color:#111!important;
+    border:1px solid #38761d!important;
+    font-size:16px!important;
+    font-weight:bold!important;
+  }
+
+  .mobileFab{display:none!important;}
+
+  .mobileBottomNav{
+    display:block!important;
+    position:static!important;
+    width:100vw!important;
+    max-width:100vw!important;
+    overflow-x:auto!important;
+    overflow-y:hidden!important;
+    white-space:nowrap!important;
+    -webkit-overflow-scrolling:touch;
+    background:#111!important;
+    border-top:2px solid #0f7b2f!important;
+    padding:8px 4px 12px 4px!important;
+    margin-top:8px!important;
+    box-sizing:border-box!important;
+    z-index:auto!important;
+  }
+
+  .mobileBottomNav a{
+    display:inline-block!important;
+    color:white!important;
+    background:#0f7b2f!important;
+    padding:10px 12px!important;
+    margin:0 3px!important;
+    border-radius:6px!important;
+    text-decoration:none!important;
+    font-size:15px!important;
+    font-weight:bold!important;
+  }
+
+  table.admin{
+    display:block!important;
+    width:max-content!important;
+    min-width:1000px!important;
+    max-width:none!important;
+    overflow-x:auto!important;
+    -webkit-overflow-scrolling:touch;
+  }
+
+  .admin th,.admin td{
+    white-space:nowrap!important;
+    padding:8px!important;
+    font-size:14px!important;
+  }
+
+  .userform{
+    max-width:100vw!important;
+    overflow-x:auto!important;
+    -webkit-overflow-scrolling:touch;
+  }
+
+  input,select,textarea,button{font-size:16px!important;}
+
+  #snipBox{
+    left:8px!important;
+    right:8px!important;
+    top:75px!important;
+    width:auto!important;
+    max-width:calc(100vw - 16px)!important;
+  }
+}
+@media (min-width:801px){
+  .scheduleZoomBar,.mobileActionBar,.mobileBottomNav{display:none!important;}
+}
+
 </style>
 <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
@@ -1771,6 +1970,11 @@ def index():
           </form>
         </div>'''
         body += f"<form id='sheetForm' method='post' action='/save_command'><input type='hidden' name='sheet' value='{html.escape(active)}'>"
+    body += "<div class='scheduleZoomBar'>"
+    body += "<button type='button' onclick='pmwScheduleZoomOut()'>Schedule -</button>"
+    body += "<button type='button' onclick='pmwScheduleZoomIn()'>Schedule +</button>"
+    body += "<button type='button' onclick='pmwScheduleZoomReset()'>Reset Zoom</button>"
+    body += "</div>"
     body += "<div class='sheetline'><div class='sheetwrap'><table class='sheet'><col class='num'><col class='job'><col class='note'><col class='num'><col class='job'><col class='note'>"
     sched_date = get_schedule_date_settings(active)
     datev = sched_date['display_date']
@@ -2287,7 +2491,7 @@ function clearSelectedCells(){
   });
 }
 
-// ===== v49.5 Mobile Bottom Nav =====
+// ===== v49.6 Mobile No Overlap =====
 (function(){
   const AUTO_REFRESH_MS = 5 * 60 * 1000;
   const RETURN_REFRESH_AFTER_MS = 45 * 1000;
@@ -2416,6 +2620,54 @@ function markSelectedComplete(){
       if(saved && !isNaN(saved)) window.pmwScheduleZoom = saved;
     }catch(e){}
     setTimeout(applyScheduleZoom, 150);
+  });
+})();
+
+
+// ===== v49.6 schedule-only zoom, no page zoom =====
+(function(){
+  window.pmwScheduleZoom = window.pmwScheduleZoom || 1.0;
+
+  function applyScheduleZoom(){
+    const wrap = document.querySelector('.sheetwrap');
+    if(!wrap) return;
+    let z = window.pmwScheduleZoom || 1;
+    z = Math.max(0.55, Math.min(2.5, z));
+    window.pmwScheduleZoom = z;
+
+    wrap.style.setProperty('transform', 'scale(' + z + ')', 'important');
+    wrap.style.setProperty('transform-origin', 'top left', 'important');
+    wrap.style.setProperty('width', (100 / z) + '%', 'important');
+    wrap.style.setProperty('margin-bottom', Math.max(0, (z - 1) * 800) + 'px', 'important');
+
+    const line = document.querySelector('.sheetline');
+    if(line){
+      line.style.setProperty('overflow-x', 'auto', 'important');
+      line.style.setProperty('-webkit-overflow-scrolling', 'touch', 'important');
+    }
+
+    try{ localStorage.setItem('pmw_schedule_zoom', String(z)); }catch(e){}
+  }
+
+  window.pmwScheduleZoomIn = function(){
+    window.pmwScheduleZoom = (window.pmwScheduleZoom || 1) + 0.20;
+    applyScheduleZoom();
+  };
+  window.pmwScheduleZoomOut = function(){
+    window.pmwScheduleZoom = (window.pmwScheduleZoom || 1) - 0.20;
+    applyScheduleZoom();
+  };
+  window.pmwScheduleZoomReset = function(){
+    window.pmwScheduleZoom = 1;
+    applyScheduleZoom();
+  };
+
+  window.addEventListener('load', function(){
+    try{
+      const saved = parseFloat(localStorage.getItem('pmw_schedule_zoom') || '1');
+      if(saved && !isNaN(saved)) window.pmwScheduleZoom = saved;
+    }catch(e){}
+    setTimeout(applyScheduleZoom, 200);
   });
 })();
 
@@ -4737,7 +4989,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v49.5 Mobile Bottom Nav')
+    print('PMW Ticket + Fabrication APP v49.6 Mobile No Overlap')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
