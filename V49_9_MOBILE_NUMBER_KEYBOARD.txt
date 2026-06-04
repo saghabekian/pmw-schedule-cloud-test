@@ -1,0 +1,8 @@
+PMW Render v49.9 Mobile Number Keyboard
+
+Built from v49.8.
+
+Changes:
+- Moves Clear Cell + Link to the far left/front of the mobile formatting toolbar.
+- Number/order cells use inputmode='numeric' and pattern='[0-9]*' for iPhone numeric keyboard.
+- Enter key on a sort/order cell moves to the next row in the same sort column.

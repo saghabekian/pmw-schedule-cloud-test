@@ -23,7 +23,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v49.8 Mobile Formatting Toolbar"
+APP_VERSION = "v49.9 Mobile Number Keyboard"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -1677,7 +1677,7 @@ BASE = """
 }
 
 
-/* ===== v49.8 Mobile Formatting Toolbar Fix ===== */
+/* ===== v49.9 Mobile Number Keyboard Fix ===== */
 @media (max-width: 800px){
   html, body{
     max-width:100vw;
@@ -1876,7 +1876,7 @@ BASE = """
 }
 
 
-/* ===== v49.8 Mobile Formatting Toolbar ===== */
+/* ===== v49.9 Mobile Number Keyboard ===== */
 @media (max-width: 800px){
   html, body{
     max-width:100vw;
@@ -2027,7 +2027,7 @@ BASE = """
 }
 
 
-/* ===== v49.8 Mobile Formatting Toolbar ===== */
+/* ===== v49.9 Mobile Number Keyboard ===== */
 @media (max-width: 800px){
   html, body{
     padding-bottom: calc(220px + env(safe-area-inset-bottom)) !important;
@@ -2111,6 +2111,21 @@ BASE = """
   .mobileFormatBar{display:none!important;}
 }
 
+
+/* ===== v49.9 Mobile number keyboard tweaks ===== */
+@media (max-width:800px){
+  .mobileFormatBar .bigclear{
+    min-width:150px!important;
+    background:#ffffff!important;
+    border:2px solid #b42318!important;
+    color:#b42318!important;
+    text-decoration:none!important;
+  }
+  .numinput{
+    -webkit-appearance:none;
+  }
+}
+
 </style>
 <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
@@ -2188,6 +2203,7 @@ def index():
         body += "<div class='mobileTop'><button type='button' class='red' onclick=\"setCellColor('#ff6666')\">Red</button><button type='button' class='yellow' onclick=\"setCellColor('#fff066')\">Yellow</button><button type='button' class='green' onclick=\"setCellColor('#93d050')\">Green</button><button type='button' class='blue' onclick=\"setCellColor('#9dc3e6')\">Blue</button><button type='button' class='white' onclick=\"setCellColor('#ffffff')\">White</button><button type='button' onclick=\"setCellColor('')\">Clear</button><button type='button' onclick=\"toggleBold()\"><b>B</b></button><button type='button' onclick=\"openRichTextEditor()\">Words</button><button type='button' onclick=\"clearSelectedCells()\">Clear</button><button type='button' onclick=\"mobileZoomOut()\">Zoom -</button><button type='button' onclick=\"mobileZoomIn()\">Zoom +</button><span class='mobileZoomLabel' id='mobileZoomLabel'>100%</span></div>"
     if editable:
         body += """<div class='mobileFormatBar'>
+<button type='button' class='mf clear bigclear' onclick="clearSelectedCells()">Clear Cell + Link</button>
 <span class='mfLabel'>Cell</span>
 <button type='button' class='mf red' onclick="setCellColor('#ff6666')">Red</button>
 <button type='button' class='mf yellow' onclick="setCellColor('#fff066')">Yellow</button>
@@ -2210,7 +2226,6 @@ def index():
 <button type='button' onclick="setFontSize('20')">20</button>
 <button type='button' onclick="toggleBold()"><b>Bold</b></button>
 <button type='button' onclick="openRichTextEditor()">Edit Words</button>
-<button type='button' onclick="clearSelectedCells()">Clear Cell + Link</button>
 </div>"""
     body += "<div class='workspace'>"
     if editable:
@@ -2266,7 +2281,7 @@ def index():
                 if rich:
                     body += f"<td style='{style}' data-row='{r}' data-col='{c}'><div class='cellbox'><div class='cellinput richCell' contenteditable='true' data-row='{r}' data-col='{c}' style='{style}'>{rich}</div><input class='plainHidden' name='cell_{r}_{c}' data-row='{r}' data-col='{c}' value='{html.escape(v, quote=True)}' autocomplete='off'><input type='hidden' name='bg_{r}_{c}' value='{html.escape(bg, quote=True)}'><input type='hidden' name='txt_{r}_{c}' value='{html.escape(txt, quote=True)}'><input type='hidden' name='link_{r}_{c}' value='{html.escape(link, quote=True)}'><input type='hidden' name='label_{r}_{c}' value='{html.escape(label, quote=True)}'><input type='hidden' name='fsize_{r}_{c}' value='{html.escape(fsize, quote=True)}'><input type='hidden' name='bold_{r}_{c}' value='{html.escape(bold, quote=True)}'><input type='hidden' name='rich_{r}_{c}' value='{html.escape(rich, quote=True)}'><input type='hidden' name='loaded_{r}_{c}' value='{html.escape(m.get('updated_at','') or '', quote=True)}'>{link_html}</div></td>"
                 else:
-                    body += f"<td style='{style}' data-row='{r}' data-col='{c}'><div class='cellbox'><input class='cellinput {cls}' name='cell_{r}_{c}' data-row='{r}' data-col='{c}' style='{style}' value='{html.escape(v, quote=True)}' autocomplete='off'><input type='hidden' name='bg_{r}_{c}' value='{html.escape(bg, quote=True)}'><input type='hidden' name='txt_{r}_{c}' value='{html.escape(txt, quote=True)}'><input type='hidden' name='link_{r}_{c}' value='{html.escape(link, quote=True)}'><input type='hidden' name='label_{r}_{c}' value='{html.escape(label, quote=True)}'><input type='hidden' name='fsize_{r}_{c}' value='{html.escape(fsize, quote=True)}'><input type='hidden' name='bold_{r}_{c}' value='{html.escape(bold, quote=True)}'><input type='hidden' name='rich_{r}_{c}' value='{html.escape(rich, quote=True)}'><input type='hidden' name='loaded_{r}_{c}' value='{html.escape(m.get('updated_at','') or '', quote=True)}'>{link_html}</div></td>"
+                    body += f"<td style='{style}' data-row='{r}' data-col='{c}'><div class='cellbox'><input class='cellinput {cls}' name='cell_{r}_{c}' data-row='{r}' data-col='{c}' style='{style}' value='{html.escape(v, quote=True)}' autocomplete='off' {("inputmode='numeric' pattern='[0-9]*' enterkeyhint='next'" if c in (1,4) else "")}><input type='hidden' name='bg_{r}_{c}' value='{html.escape(bg, quote=True)}'><input type='hidden' name='txt_{r}_{c}' value='{html.escape(txt, quote=True)}'><input type='hidden' name='link_{r}_{c}' value='{html.escape(link, quote=True)}'><input type='hidden' name='label_{r}_{c}' value='{html.escape(label, quote=True)}'><input type='hidden' name='fsize_{r}_{c}' value='{html.escape(fsize, quote=True)}'><input type='hidden' name='bold_{r}_{c}' value='{html.escape(bold, quote=True)}'><input type='hidden' name='rich_{r}_{c}' value='{html.escape(rich, quote=True)}'><input type='hidden' name='loaded_{r}_{c}' value='{html.escape(m.get('updated_at','') or '', quote=True)}'>{link_html}</div></td>"
             else:
                 body += f"<td style='{style}'>{rich if rich else html.escape(v)} {link_html}</td>"
         body += "</tr>"
@@ -2753,7 +2768,7 @@ function clearSelectedCells(){
   });
 }
 
-// ===== v49.8 Mobile Formatting Toolbar =====
+// ===== v49.9 Mobile Number Keyboard =====
 (function(){
   const AUTO_REFRESH_MS = 5 * 60 * 1000;
   const RETURN_REFRESH_AFTER_MS = 45 * 1000;
@@ -2932,6 +2947,29 @@ function markSelectedComplete(){
     setTimeout(applyScheduleZoom, 200);
   });
 })();
+
+
+// ===== v49.9 Faster mobile sort number entry =====
+document.addEventListener('keydown', function(e){
+  const el = e.target;
+  if(!el || !el.classList || !el.classList.contains('numinput')) return;
+  if(e.key === 'Enter'){
+    e.preventDefault();
+    try{
+      const r = parseInt(el.dataset.row || '0', 10);
+      const c = parseInt(el.dataset.col || '0', 10);
+      const next = document.querySelector(`.cellinput[data-row="${r+1}"][data-col="${c}"]`);
+      if(next){
+        next.focus();
+        if(next.select) next.select();
+      }else{
+        el.blur();
+      }
+    }catch(err){
+      el.blur();
+    }
+  }
+}, true);
 
 </script>
 </form>"""
@@ -5251,7 +5289,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v49.8 Mobile Formatting Toolbar')
+    print('PMW Ticket + Fabrication APP v49.9 Mobile Number Keyboard')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
