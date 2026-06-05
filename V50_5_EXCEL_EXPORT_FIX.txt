@@ -1,0 +1,9 @@
+PMW Render v50.5 Excel Export Fix
+
+Built from v50.4.
+
+Fix:
+- Adds missing send_file import so Export Schedule to Excel downloads properly.
+- Keeps Excel export route and all v50.4 features.
+
+No other app features changed.

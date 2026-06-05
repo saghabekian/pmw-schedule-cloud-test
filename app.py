@@ -8,7 +8,7 @@ import re
 from io import BytesIO
 from datetime import datetime
 from functools import wraps
-from flask import Flask, request, redirect, url_for, session, render_template_string, flash, jsonify, send_from_directory
+from flask import Flask, request, redirect, url_for, session, render_template_string, flash, jsonify, send_from_directory, send_file
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from openpyxl import load_workbook
@@ -26,7 +26,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v50.4 Excel Schedule Export"
+APP_VERSION = "v50.5 Excel Export Fix"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -1680,7 +1680,7 @@ BASE = """
 }
 
 
-/* ===== v50.4 Excel Schedule Export Fix ===== */
+/* ===== v50.5 Excel Export Fix Fix ===== */
 @media (max-width: 800px){
   html, body{
     max-width:100vw;
@@ -1879,7 +1879,7 @@ BASE = """
 }
 
 
-/* ===== v50.4 Excel Schedule Export ===== */
+/* ===== v50.5 Excel Export Fix ===== */
 @media (max-width: 800px){
   html, body{
     max-width:100vw;
@@ -2030,7 +2030,7 @@ BASE = """
 }
 
 
-/* ===== v50.4 Excel Schedule Export ===== */
+/* ===== v50.5 Excel Export Fix ===== */
 @media (max-width: 800px){
   html, body{
     padding-bottom: calc(220px + env(safe-area-inset-bottom)) !important;
@@ -2130,7 +2130,7 @@ BASE = """
 }
 
 
-/* ===== v50.4 Excel Schedule Export ===== */
+/* ===== v50.5 Excel Export Fix ===== */
 .ticketAlert{
   margin:8px 0;
   padding:10px 12px;
@@ -2171,7 +2171,7 @@ BASE = """
 }
 
 
-/* ===== v50.4 Excel Schedule Export ===== */
+/* ===== v50.5 Excel Export Fix ===== */
 body > div[style*="PostgreSQL"],
 body > div[style*="Render v26"],
 .databaseBanner,
@@ -2875,7 +2875,7 @@ function clearSelectedCells(){
   });
 }
 
-// ===== v50.4 Excel Schedule Export =====
+// ===== v50.5 Excel Export Fix =====
 (function(){
   const AUTO_REFRESH_MS = 5 * 60 * 1000;
   const RETURN_REFRESH_AFTER_MS = 45 * 1000;
@@ -4560,8 +4560,9 @@ def export_schedule_excel():
     try:
         wb = export_schedule_workbook()
         fn = "PMW_Schedule_Export_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".xlsx"
-        path = os.path.join(EXPORT_FOLDER, fn)
-        os.makedirs(EXPORT_FOLDER, exist_ok=True)
+        export_folder = globals().get('EXPORT_FOLDER', '/tmp')
+        path = os.path.join(export_folder, fn)
+        os.makedirs(export_folder, exist_ok=True)
         wb.save(path)
         log('EXPORT_SCHEDULE_EXCEL', fn)
         try:
@@ -5560,7 +5561,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v50.4 Excel Schedule Export')
+    print('PMW Ticket + Fabrication APP v50.5 Excel Export Fix')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
