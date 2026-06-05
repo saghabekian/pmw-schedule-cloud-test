@@ -1,4 +1,7 @@
 import os, sqlite3, html, urllib.parse, subprocess, platform, mimetypes
+from openpyxl import Workbook
+from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 import base64
 import json
 import re
@@ -23,7 +26,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v50.3 Clean Header"
+APP_VERSION = "v50.4 Excel Schedule Export"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -1677,7 +1680,7 @@ BASE = """
 }
 
 
-/* ===== v50.3 Clean Header Fix ===== */
+/* ===== v50.4 Excel Schedule Export Fix ===== */
 @media (max-width: 800px){
   html, body{
     max-width:100vw;
@@ -1876,7 +1879,7 @@ BASE = """
 }
 
 
-/* ===== v50.3 Clean Header ===== */
+/* ===== v50.4 Excel Schedule Export ===== */
 @media (max-width: 800px){
   html, body{
     max-width:100vw;
@@ -2027,7 +2030,7 @@ BASE = """
 }
 
 
-/* ===== v50.3 Clean Header ===== */
+/* ===== v50.4 Excel Schedule Export ===== */
 @media (max-width: 800px){
   html, body{
     padding-bottom: calc(220px + env(safe-area-inset-bottom)) !important;
@@ -2127,7 +2130,7 @@ BASE = """
 }
 
 
-/* ===== v50.3 Clean Header ===== */
+/* ===== v50.4 Excel Schedule Export ===== */
 .ticketAlert{
   margin:8px 0;
   padding:10px 12px;
@@ -2168,7 +2171,7 @@ BASE = """
 }
 
 
-/* ===== v50.3 Clean Header ===== */
+/* ===== v50.4 Excel Schedule Export ===== */
 body > div[style*="PostgreSQL"],
 body > div[style*="Render v26"],
 .databaseBanner,
@@ -2872,7 +2875,7 @@ function clearSelectedCells(){
   });
 }
 
-// ===== v50.3 Clean Header =====
+// ===== v50.4 Excel Schedule Export =====
 (function(){
   const AUTO_REFRESH_MS = 5 * 60 * 1000;
   const RETURN_REFRESH_AFTER_MS = 45 * 1000;
@@ -3810,7 +3813,7 @@ def admin_storage():
     con.close()
     total = int(msg_bytes or 0) + int(att_bytes or 0)
     body = f"""
-    <h2>Admin - Ticket Storage</h2>
+    <h2>Admin - Ticket Storage</h2><p><a class='btn green' href='/admin/export_schedule_excel'>Export Schedule to Excel</a></p>
     <div class='userform'>
       <p><b>Tickets:</b> {tickets}</p>
       <p><b>Attachments:</b> {atts}</p>
@@ -4464,6 +4467,112 @@ def pmw_auto_daily_backup_hook():
     if request.endpoint and not request.endpoint.startswith('static'):
         maybe_daily_backup()
 
+
+# ===== EXCEL SCHEDULE EXPORT v50.4 =====
+def safe_excel_color(hex_color):
+    h = (hex_color or '').strip().replace('#','')
+    if len(h) == 6:
+        return 'FF' + h.upper()
+    return None
+
+def export_schedule_workbook():
+    wb = Workbook()
+    default = wb.active
+    wb.remove(default)
+
+    sheets = sheet_names()
+    if not sheets:
+        sheets = ['Fabrication Schedule']
+
+    thin = Side(style="thin", color="999999")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    for sheet in sheets:
+        ws = wb.create_sheet(title=(sheet[:31] or "Schedule"))
+        d = cells_for(sheet)
+        meta = cell_meta_for(sheet)
+
+        # Header row
+        headers = ["#", "NUMBERING", "DONE", "#", "FABRICATION", "DONE"]
+        for idx, h in enumerate(headers, start=1):
+            cell = ws.cell(row=1, column=idx, value=h)
+            cell.font = Font(bold=True)
+            cell.fill = PatternFill("solid", fgColor="FFD9EAD3")
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+            cell.border = border
+
+        for r in range(3, 51):
+            excel_r = r - 1
+            for c in DISPLAY_COLS:
+                v = d.get((r,c), '')
+                m = meta.get((r,c), {})
+                cell = ws.cell(row=excel_r, column=c, value=v)
+
+                bg = safe_excel_color(m.get('bg_color',''))
+                txt = safe_excel_color(m.get('text_color',''))
+
+                if bg:
+                    cell.fill = PatternFill("solid", fgColor=bg)
+                if txt:
+                    cell.font = Font(
+                        color=txt,
+                        bold=bool(m.get('bold')),
+                        size=float(m.get('font_size')) if str(m.get('font_size','')).strip().replace('.','',1).isdigit() else None
+                    )
+                else:
+                    cell.font = Font(
+                        bold=bool(m.get('bold')),
+                        size=float(m.get('font_size')) if str(m.get('font_size','')).strip().replace('.','',1).isdigit() else None
+                    )
+
+                cell.alignment = Alignment(vertical="center", wrap_text=True)
+                cell.border = border
+
+                link = (m.get('link_path') or '').strip()
+                if link:
+                    # Internal app links are exported as text in adjacent note/comment style.
+                    # If it looks like an http link, make it clickable.
+                    if link.startswith('http://') or link.startswith('https://'):
+                        cell.hyperlink = link
+                        cell.style = "Hyperlink"
+                    comment_label = (m.get('link_label') or 'LINK').strip()
+                    try:
+                        cell.value = (str(v) + "  [Attachment: " + comment_label + "]").strip()
+                    except Exception:
+                        pass
+
+        # Widths to match schedule.
+        widths = {1:8, 2:42, 3:14, 4:8, 5:42, 6:14}
+        for c, w in widths.items():
+            ws.column_dimensions[get_column_letter(c)].width = w
+
+        for rr in range(1, 50):
+            ws.row_dimensions[rr].height = 24
+
+        ws.freeze_panes = "A2"
+
+    return wb
+
+@app.route('/admin/export_schedule_excel')
+@login_required
+@role_required('admin')
+def export_schedule_excel():
+    try:
+        wb = export_schedule_workbook()
+        fn = "PMW_Schedule_Export_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".xlsx"
+        path = os.path.join(EXPORT_FOLDER, fn)
+        os.makedirs(EXPORT_FOLDER, exist_ok=True)
+        wb.save(path)
+        log('EXPORT_SCHEDULE_EXCEL', fn)
+        try:
+            return send_file(path, as_attachment=True, download_name=fn)
+        except TypeError:
+            return send_file(path, as_attachment=True, attachment_filename=fn)
+    except Exception as e:
+        flash('Excel export failed: ' + str(e))
+        return redirect('/admin/backup')
+
+
 @app.route('/admin/backup')
 @login_required
 @role_required('admin')
@@ -4489,6 +4598,7 @@ def admin_backup():
     </div>
     <div class='userform'>
       <h3>Download Backup</h3>
+      <p><a class='btn green' href='/admin/export_schedule_excel'>Export Schedule to Excel</a></p>
       <p>This exports users, schedule cells, ticket emails, ticket attachments, job history, settings, and audit records into one JSON file.</p>
       <p><a class='btn green' href='/admin/download_backup'>Download Full Backup</a></p>
       <p class='small'><b>Important:</b> Render's app filesystem can be temporary. Keep downloaded backups on your PC, company drive, or cloud storage.</p>
@@ -5450,7 +5560,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v50.3 Clean Header')
+    print('PMW Ticket + Fabrication APP v50.4 Excel Schedule Export')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)

@@ -1,0 +1,11 @@
+PMW Render v50.4 Excel Schedule Export
+
+Adds:
+- Admin-only Export Schedule to Excel button.
+- Route: /admin/export_schedule_excel
+- Exports current schedule sheets to .xlsx.
+- Includes schedule rows, sort numbers, job cells, done cells, colors, text colors, bold, font sizes, and attachment label text.
+
+Notes:
+- Internal app attachment links are exported as text labels because they depend on the live web app/database.
+- This is a human-readable Excel backup that can be saved separately from the PostgreSQL JSON backup.
