@@ -26,7 +26,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v51 Plain Cell Edit Arrows"
+APP_VERSION = "v51.1 Keyboard Nav Patch"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -2842,10 +2842,42 @@ document.addEventListener('keydown', function(e){
   // Let Alt+Arrow keep normal cursor/navigation behavior if needed.
   if(e.altKey) return;
 
-  // If a rich text cell is actively being edited, keep arrows inside the text.
-  // Plain spreadsheet cells get Excel-like arrow movement.
-  const isRich = el.classList.contains('richCell');
-  if(isRich && !e.ctrlKey) return;
+  // V51.1:
+  // Normal mode: arrows move around the grid.
+  // Edit mode: left/right stay inside the cell text; up/down still move cells.
+  // A plain cell enters edit mode after typing, double-click, F2, or mouse click inside the cell.
+  if(!el.dataset.editMode) el.dataset.editMode='0';
+
+  if(e.key === 'F2'){
+    el.dataset.editMode='1';
+    const len=(el.value || '').length;
+    try{ el.setSelectionRange(len,len); }catch(err){}
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    return;
+  }
+
+  if(e.key === 'Escape'){
+    el.dataset.editMode='0';
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    return;
+  }
+
+  // Printable typing puts the cell into edit mode.
+  if(e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey){
+    el.dataset.editMode='1';
+    return;
+  }
+
+  // If editing text, left/right should move the caret inside the input.
+  if((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && el.dataset.editMode === '1'){
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    return;
+  }
 
   let moved=false;
   if(e.key === 'ArrowUp') moved=pmwMoveCell(el,-1,0);
@@ -2856,6 +2888,29 @@ document.addEventListener('keydown', function(e){
   if(moved){
     e.preventDefault();
     e.stopPropagation();
+    e.stopImmediatePropagation();
+  }
+}, true);
+
+document.addEventListener('dblclick', function(e){
+  const el=e.target;
+  if(pmwIsDesktopForArrows() && el && el.classList && el.classList.contains('cellinput')){
+    el.dataset.editMode='1';
+    const len=(el.value || '').length;
+    try{ el.setSelectionRange(len,len); }catch(err){}
+  }
+}, true);
+
+document.addEventListener('mousedown', function(e){
+  const el=e.target;
+  if(pmwIsDesktopForArrows() && el && el.classList && el.classList.contains('cellinput')){
+    // A direct mouse click means user is trying to work inside this cell.
+    // Delay so focus/selection happens first.
+    setTimeout(function(){
+      if(document.activeElement === el){
+        el.dataset.editMode='1';
+      }
+    }, 30);
   }
 }, true);
 

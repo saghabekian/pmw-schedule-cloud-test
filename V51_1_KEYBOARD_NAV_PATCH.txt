@@ -1,0 +1,12 @@
+PMW Render v51.1 Keyboard Nav Patch
+
+This patches the actual original desktop arrow-key handler.
+
+Behavior:
+- Normal selected cell: arrow keys move around the grid.
+- Start typing, double-click, mouse-click inside, or press F2: edit mode.
+- Edit mode: left/right arrows move cursor inside the text.
+- Up/down arrows still move to cell above/below.
+- Escape exits edit mode.
+
+This should apply to regular schedule cells, not only rich/Edit Selected Words cells.
