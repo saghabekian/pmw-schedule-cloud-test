@@ -1,0 +1,13 @@
+PMW Render v50.7 Undo Visible Fix
+
+Built from v50.5.
+
+Fixes:
+- Forces Undo button into the visible desktop formatting toolbar.
+- Forces Undo button into the visible desktop action buttons when possible.
+- Forces Undo button into the mobile bottom action bar.
+- Adds robust Undo JS.
+- Left/right arrows stay inside cell text.
+- Up/down arrows move vertically to the same column cell above/below.
+
+If you do not see v50.7 at the top after deploy, the old version is still cached or Render did not deploy the new files.

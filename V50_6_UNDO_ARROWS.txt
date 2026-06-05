@@ -1,0 +1,7 @@
+PMW Render v50.6 Undo + Arrow Edit
+
+Adds:
+- Undo button on schedule page and mobile action bar.
+- Undo restores the last edited cell value and autosaves it.
+- Left/right arrows move inside text while editing.
+- Up/down arrows move to the cell above/below in same column.

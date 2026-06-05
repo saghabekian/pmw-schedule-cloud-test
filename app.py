@@ -26,7 +26,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v50.5 Excel Export Fix"
+APP_VERSION = "v50.7 Undo Visible Fix"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -1680,7 +1680,7 @@ BASE = """
 }
 
 
-/* ===== v50.5 Excel Export Fix Fix ===== */
+/* ===== v50.7 Undo Visible Fix Fix ===== */
 @media (max-width: 800px){
   html, body{
     max-width:100vw;
@@ -1879,7 +1879,7 @@ BASE = """
 }
 
 
-/* ===== v50.5 Excel Export Fix ===== */
+/* ===== v50.7 Undo Visible Fix ===== */
 @media (max-width: 800px){
   html, body{
     max-width:100vw;
@@ -2030,7 +2030,7 @@ BASE = """
 }
 
 
-/* ===== v50.5 Excel Export Fix ===== */
+/* ===== v50.7 Undo Visible Fix ===== */
 @media (max-width: 800px){
   html, body{
     padding-bottom: calc(220px + env(safe-area-inset-bottom)) !important;
@@ -2130,7 +2130,7 @@ BASE = """
 }
 
 
-/* ===== v50.5 Excel Export Fix ===== */
+/* ===== v50.7 Undo Visible Fix ===== */
 .ticketAlert{
   margin:8px 0;
   padding:10px 12px;
@@ -2171,7 +2171,7 @@ BASE = """
 }
 
 
-/* ===== v50.5 Excel Export Fix ===== */
+/* ===== v50.7 Undo Visible Fix ===== */
 body > div[style*="PostgreSQL"],
 body > div[style*="Render v26"],
 .databaseBanner,
@@ -2203,6 +2203,23 @@ body > div[style*="background: #fff3cd"]{
   h1{
     margin-top:4px!important;
     margin-bottom:4px!important;
+  }
+}
+
+
+/* ===== v50.7 Undo visible styling ===== */
+.pmwUndoTopButton,.pmwUndoActionButton{
+  background:#fff3cd!important;
+  border:2px solid #bf9000!important;
+  color:#111!important;
+  font-weight:bold!important;
+}
+@media(max-width:800px){
+  .pmwUndoMobileButton,.mobileActionBar button.pmwUndoMobileButton{
+    background:#fff3cd!important;
+    border:2px solid #bf9000!important;
+    color:#111!important;
+    font-weight:bold!important;
   }
 }
 
@@ -2284,7 +2301,7 @@ def index():
     note = "V18: multi-cell colors, font size, bold, and selected-word editor." if editable else "View only."
     color_html = ""
     if editable:
-        color_html = """<div class='colorbar'>
+        color_html = """<div class='colorbar'><button type='button' class='pmwUndoTopButton' onclick='undoLastCellEdit()'>Undo</button>
 <b>Cell:</b>
 <button type='button' class='swatch red' onclick="setCellColor('#ff6666')" title='Red'></button>
 <button type='button' class='swatch yellow' onclick="setCellColor('#fff066')" title='Yellow'></button>
@@ -2406,6 +2423,7 @@ def index():
 <button type='button' onclick='openSnipBox()'>Snip / Print / Email</button>
 </div>
 <div class='mobileActionBar'>
+<button type='button' class='pmwUndoActionButton' onclick='undoLastCellEdit()'>Undo</button>
 <button type='submit' name='cmd' value='email_schedule'>Email PDF</button>
 <button type='submit' name='cmd' value='print_pdf'>Print PDF</button>
 <button type='submit' name='cmd' value='sort_numbering'>Sort Numbering</button>
@@ -2875,7 +2893,7 @@ function clearSelectedCells(){
   });
 }
 
-// ===== v50.5 Excel Export Fix =====
+// ===== v50.7 Undo Visible Fix =====
 (function(){
   const AUTO_REFRESH_MS = 5 * 60 * 1000;
   const RETURN_REFRESH_AFTER_MS = 45 * 1000;
@@ -3131,6 +3149,115 @@ function markSelectedComplete(){
         }
       }
       lastSortCell = el;
+    }
+  }, true);
+})();
+
+
+// ===== v50.7 Undo visible + arrow-key edit fix =====
+(function(){
+  window.pmwUndoStack = window.pmwUndoStack || [];
+  const MAX_UNDO = 25;
+
+  function isCell(el){
+    return el && el.matches && el.matches('.cellinput, .richcell');
+  }
+  function getId(el){
+    return el && el.dataset ? {row: el.dataset.row, col: el.dataset.col} : {};
+  }
+  function getVal(el){
+    if(!el) return '';
+    return (el.classList && el.classList.contains('richcell')) ? (el.innerHTML || '') : (el.value || '');
+  }
+  function setVal(el, v){
+    if(!el) return;
+    if(el.classList && el.classList.contains('richcell')) el.innerHTML = v || '';
+    else el.value = v || '';
+  }
+  function findCell(r,c){
+    return document.querySelector(`.cellinput[data-row="${r}"][data-col="${c}"], .richcell[data-row="${r}"][data-col="${c}"]`);
+  }
+  function saveCell(el){
+    try{
+      if(typeof autosaveCell === 'function') autosaveCell(el);
+      else if(typeof scheduleAutosaveCell === 'function') scheduleAutosaveCell(el);
+      else el.dispatchEvent(new Event('change', {bubbles:true}));
+    }catch(e){
+      try{ el.dispatchEvent(new Event('change', {bubbles:true})); }catch(err){}
+    }
+  }
+  function pushUndo(el, before){
+    const id = getId(el);
+    if(!id.row || !id.col) return;
+    window.pmwUndoStack.push({row:id.row, col:id.col, value:before, scrollX:window.scrollX, scrollY:window.scrollY});
+    if(window.pmwUndoStack.length > MAX_UNDO) window.pmwUndoStack.shift();
+  }
+
+  document.addEventListener('focusin', function(e){
+    const el = e.target;
+    if(isCell(el)){
+      el.dataset.undoStartValue = getVal(el);
+      el.dataset.undoChanged = '0';
+    }
+  }, true);
+
+  document.addEventListener('input', function(e){
+    const el = e.target;
+    if(isCell(el) && el.dataset.undoChanged !== '1'){
+      pushUndo(el, el.dataset.undoStartValue || '');
+      el.dataset.undoChanged = '1';
+    }
+  }, true);
+
+  document.addEventListener('change', function(e){
+    const el = e.target;
+    if(isCell(el) && el.dataset.undoChanged !== '1' && (el.dataset.undoStartValue || '') !== getVal(el)){
+      pushUndo(el, el.dataset.undoStartValue || '');
+      el.dataset.undoChanged = '1';
+    }
+  }, true);
+
+  window.undoLastCellEdit = function(){
+    const item = window.pmwUndoStack.pop();
+    if(!item){
+      alert('Nothing to undo.');
+      return;
+    }
+    const el = findCell(item.row, item.col);
+    if(!el){
+      alert('Could not find the cell to undo.');
+      return;
+    }
+    setVal(el, item.value);
+    el.focus();
+    try{ if(el.select) el.select(); }catch(e){}
+    saveCell(el);
+    try{ window.scrollTo(item.scrollX || 0, item.scrollY || 0); }catch(e){}
+  };
+
+  document.addEventListener('keydown', function(e){
+    const el = e.target;
+    if(!isCell(el)) return;
+
+    // Let left/right stay inside the input text.
+    if(e.key === 'ArrowLeft' || e.key === 'ArrowRight'){
+      e.stopImmediatePropagation();
+      return;
+    }
+
+    // Up/down moves vertically in the same column.
+    if(e.key === 'ArrowUp' || e.key === 'ArrowDown'){
+      const id = getId(el);
+      if(!id.row || !id.col) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      saveCell(el);
+      const nr = parseInt(id.row, 10) + (e.key === 'ArrowDown' ? 1 : -1);
+      const next = findCell(nr, id.col);
+      if(next){
+        next.focus();
+        try{ if(next.select) next.select(); }catch(err){}
+      }
     }
   }, true);
 })();
@@ -5561,7 +5688,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v50.5 Excel Export Fix')
+    print('PMW Ticket + Fabrication APP v50.7 Undo Visible Fix')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)
