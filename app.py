@@ -26,7 +26,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v50.7 Undo Visible Fix"
+APP_VERSION = "v50.8 Desktop Arrow Fix"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -1680,7 +1680,7 @@ BASE = """
 }
 
 
-/* ===== v50.7 Undo Visible Fix Fix ===== */
+/* ===== v50.8 Desktop Arrow Fix Fix ===== */
 @media (max-width: 800px){
   html, body{
     max-width:100vw;
@@ -1879,7 +1879,7 @@ BASE = """
 }
 
 
-/* ===== v50.7 Undo Visible Fix ===== */
+/* ===== v50.8 Desktop Arrow Fix ===== */
 @media (max-width: 800px){
   html, body{
     max-width:100vw;
@@ -2030,7 +2030,7 @@ BASE = """
 }
 
 
-/* ===== v50.7 Undo Visible Fix ===== */
+/* ===== v50.8 Desktop Arrow Fix ===== */
 @media (max-width: 800px){
   html, body{
     padding-bottom: calc(220px + env(safe-area-inset-bottom)) !important;
@@ -2130,7 +2130,7 @@ BASE = """
 }
 
 
-/* ===== v50.7 Undo Visible Fix ===== */
+/* ===== v50.8 Desktop Arrow Fix ===== */
 .ticketAlert{
   margin:8px 0;
   padding:10px 12px;
@@ -2171,7 +2171,7 @@ BASE = """
 }
 
 
-/* ===== v50.7 Undo Visible Fix ===== */
+/* ===== v50.8 Desktop Arrow Fix ===== */
 body > div[style*="PostgreSQL"],
 body > div[style*="Render v26"],
 .databaseBanner,
@@ -2893,7 +2893,7 @@ function clearSelectedCells(){
   });
 }
 
-// ===== v50.7 Undo Visible Fix =====
+// ===== v50.8 Desktop Arrow Fix =====
 (function(){
   const AUTO_REFRESH_MS = 5 * 60 * 1000;
   const RETURN_REFRESH_AFTER_MS = 45 * 1000;
@@ -5688,7 +5688,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v50.7 Undo Visible Fix')
+    print('PMW Ticket + Fabrication APP v50.8 Desktop Arrow Fix')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)

@@ -1,0 +1,12 @@
+PMW Render v50.8 Desktop Arrow Fix
+
+Built from v50.7.
+
+Fixes desktop arrow behavior while editing cells:
+- Left arrow moves cursor left inside the text.
+- Right arrow moves cursor right inside the text.
+- Up arrow moves to the cell above in the same column.
+- Down arrow moves to the cell below in the same column.
+- Keeps Undo button from v50.7.
+
+No changes to tickets, backup, Excel export, job history, cleanup, or mobile layout.
