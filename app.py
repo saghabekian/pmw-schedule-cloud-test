@@ -23,7 +23,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v50.2 Unassigned Ticket Alert"
+APP_VERSION = "v50.3 Clean Header"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -1135,13 +1135,13 @@ def reveal_file(path):
 
 def cloud_notice_banner():
     if os.environ.get("RENDER"):
-        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'>Render v26 Snip Auto Fill Page: old database columns are upgraded automatically on startup.</div>"
+        return "<div style='background:#fff3cd;border:1px solid #d6b656;padding:7px;margin:6px;font-weight:bold'></div>"
     return ""
 
 
 def db_mode_banner():
     if USE_POSTGRES:
-        return "<div style='background:#d4edda;border:2px solid #28a745;padding:7px;margin:6px;font-weight:bold'>Database Mode: PostgreSQL Persistent — users and schedule data should survive redeploys.</div>"
+        return "<div style='background:#d4edda;border:2px solid #28a745;padding:7px;margin:6px;font-weight:bold'></div>"
     if os.environ.get("RENDER"):
         return "<div style='background:#f8d7da;border:2px solid #dc3545;padding:7px;margin:6px;font-weight:bold'>Database Mode: SQLite TEMP — data can reset. Add DATABASE_URL to Render Environment.</div>"
     return ""
@@ -1677,7 +1677,7 @@ BASE = """
 }
 
 
-/* ===== v50.2 Unassigned Ticket Alert Fix ===== */
+/* ===== v50.3 Clean Header Fix ===== */
 @media (max-width: 800px){
   html, body{
     max-width:100vw;
@@ -1876,7 +1876,7 @@ BASE = """
 }
 
 
-/* ===== v50.2 Unassigned Ticket Alert ===== */
+/* ===== v50.3 Clean Header ===== */
 @media (max-width: 800px){
   html, body{
     max-width:100vw;
@@ -2027,7 +2027,7 @@ BASE = """
 }
 
 
-/* ===== v50.2 Unassigned Ticket Alert ===== */
+/* ===== v50.3 Clean Header ===== */
 @media (max-width: 800px){
   html, body{
     padding-bottom: calc(220px + env(safe-area-inset-bottom)) !important;
@@ -2127,7 +2127,7 @@ BASE = """
 }
 
 
-/* ===== v50.2 Unassigned Ticket Alert ===== */
+/* ===== v50.3 Clean Header ===== */
 .ticketAlert{
   margin:8px 0;
   padding:10px 12px;
@@ -2164,6 +2164,42 @@ BASE = """
     display:inline-block;
     margin-top:6px;
     margin-left:0;
+  }
+}
+
+
+/* ===== v50.3 Clean Header ===== */
+body > div[style*="PostgreSQL"],
+body > div[style*="Render v26"],
+.databaseBanner,
+.dbBanner,
+.renderBanner,
+.upgradeBanner{
+  display:none!important;
+}
+
+/* Hide old status banners by color/border pattern if still present */
+body > div[style*="background:#d4edda"],
+body > div[style*="background:#fff3cd"],
+body > div[style*="background: #d4edda"],
+body > div[style*="background: #fff3cd"]{
+  display:none!important;
+}
+
+.header,.topbar{
+  margin-bottom:4px!important;
+}
+.toolbar{
+  margin-top:4px!important;
+}
+@media(max-width:800px){
+  .header,.topbar{
+    padding-top:6px!important;
+    padding-bottom:6px!important;
+  }
+  h1{
+    margin-top:4px!important;
+    margin-bottom:4px!important;
   }
 }
 
@@ -2836,7 +2872,7 @@ function clearSelectedCells(){
   });
 }
 
-// ===== v50.2 Unassigned Ticket Alert =====
+// ===== v50.3 Clean Header =====
 (function(){
   const AUTO_REFRESH_MS = 5 * 60 * 1000;
   const RETURN_REFRESH_AFTER_MS = 45 * 1000;
@@ -5414,7 +5450,7 @@ if __name__ == '__main__':
             try: import_workbook(starter)
             except Exception as e: print('Starter import skipped:',e)
     print('====================================================')
-    print('PMW Ticket + Fabrication APP v50.2 Unassigned Ticket Alert')
+    print('PMW Ticket + Fabrication APP v50.3 Clean Header')
     print('Open http://127.0.0.1:5050')
     print('====================================================')
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5050)), debug=False)

@@ -1,0 +1,10 @@
+PMW Render v50.3 Clean Header
+
+Built from v50.2.
+
+Changes:
+- Removes/hides the top PostgreSQL database status banner.
+- Removes/hides the Render v26 snip auto-fill upgrade banner.
+- Tightens header spacing.
+
+No changes to tickets, schedule, mobile buttons, sort keyboard, backup, job history, cleanup, snip/print/email.
