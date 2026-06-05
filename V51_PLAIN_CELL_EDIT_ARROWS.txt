@@ -1,0 +1,16 @@
+PMW Render v51 Plain Cell Edit Arrows
+
+Built from v50.9.
+
+Fix:
+- Desktop arrow behavior now applies to ALL normal schedule cells, not only rich/Edit Selected Words cells.
+
+Behavior:
+- Select/focus a cell: arrows move around the grid.
+- Start typing, double-click, or press F2: cell enters edit mode.
+- In edit mode:
+  - left/right arrows move cursor inside the text
+  - up/down arrows move to cell above/below
+- Escape leaves edit mode.
+
+Keeps Undo and all previous features.

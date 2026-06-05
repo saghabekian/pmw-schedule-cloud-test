@@ -1,0 +1,12 @@
+PMW Render v50.9 Edit Mode Arrows
+
+Built from v50.8.
+
+Desktop arrow behavior:
+- When a cell is only selected/focused, arrow keys move around the grid.
+- Once you click into a cell or start typing, left/right arrows stay inside the cell text.
+- Up/down arrows still move to the cell above/below.
+- F2 also puts the focused cell into edit mode.
+- Escape leaves edit mode.
+
+Keeps Undo from v50.7/v50.8.
