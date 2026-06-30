@@ -26,7 +26,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v51.1 Keyboard Nav Patch"
+APP_VERSION = "v51.2 Backup Crash Fix"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -4560,6 +4560,21 @@ def _backup_value(table, col, val, include_binary=True):
     if val is None:
         return None
     if col in BINARY_COLUMNS.get(table, []):
+        # Full/manual backups include attachment blobs.
+        # Automatic daily server backups skip blobs so Render/Gunicorn does not die on huge files.
+        if not include_binary:
+            try:
+                if isinstance(val, memoryview):
+                    size = len(val)
+                elif isinstance(val, (bytes, bytearray)):
+                    size = len(val)
+                elif isinstance(val, str):
+                    size = len(val.encode("utf-8"))
+                else:
+                    size = 0
+            except Exception:
+                size = 0
+            return {"__pmw_blob_skipped__": True, "size": size}
         try:
             if isinstance(val, memoryview):
                 val = val.tobytes()
@@ -4568,15 +4583,6 @@ def _backup_value(table, col, val, include_binary=True):
                 raw = val.encode("utf-8")
             else:
                 raw = bytes(val)
-
-            # Automatic server-side backups should stay small and fast.
-            # Full manual downloads still include the actual blobs.
-            if not include_binary:
-                return {
-                    "__pmw_binary_skipped__": True,
-                    "size_bytes": len(raw)
-                }
-
             return {"__pmw_blob_b64__": base64.b64encode(raw).decode("ascii")}
         except Exception:
             return None
@@ -4590,32 +4596,71 @@ def _restore_value(table, col, val):
             return None
     return val
 
+def _sql_ident(name):
+    # BACKUP_TABLES / column names are controlled by this app, not user input.
+    return '"' + str(name).replace('"', '""') + '"'
+
+
+def _blob_length_expr(col):
+    return f"OCTET_LENGTH({_sql_ident(col)})" if USE_POSTGRES else f"LENGTH({_sql_ident(col)})"
+
+
 def build_backup_payload(include_binary=True):
     con = db()
     payload = {
         "app": "PMW Ticket + Fabrication",
         "backup_version": 1,
-        "include_binary": bool(include_binary),
         "exported_at": datetime.now().isoformat(timespec='seconds'),
+        "include_binary": bool(include_binary),
         "tables": {}
     }
     try:
         for table in BACKUP_TABLES:
+            print(f"Backup reading table: {table} include_binary={include_binary}", flush=True)
             if not table_exists(table):
                 payload["tables"][table] = {"columns": [], "rows": [], "missing": True}
                 continue
+
             cols = get_table_columns(con, table)
-            rows = con.execute(f"SELECT * FROM {table}").fetchall()
+            binary_cols = set(BINARY_COLUMNS.get(table, []))
+
+            # For automatic daily backups, DO NOT SELECT huge blob columns at all.
+            # Instead select their byte length only. This avoids Render worker timeouts.
+            if include_binary:
+                select_sql = f"SELECT * FROM {_sql_ident(table)}"
+                selected_cols = cols[:]
+                blob_len_alias = {}
+            else:
+                select_parts = []
+                selected_cols = []
+                blob_len_alias = {}
+                for col in cols:
+                    if col in binary_cols:
+                        alias = f"__pmw_len_{col}"
+                        blob_len_alias[col] = alias
+                        select_parts.append(f"COALESCE({_blob_length_expr(col)},0) AS {_sql_ident(alias)}")
+                    else:
+                        select_parts.append(_sql_ident(col))
+                        selected_cols.append(col)
+                select_sql = f"SELECT {', '.join(select_parts)} FROM {_sql_ident(table)}"
+
+            rows = con.execute(select_sql).fetchall()
             out_rows = []
             for row in rows:
                 obj = {}
                 for col in cols:
                     try:
-                        obj[col] = _backup_value(table, col, row[col], include_binary=include_binary)
+                        if (not include_binary) and col in binary_cols:
+                            alias = blob_len_alias.get(col, '')
+                            size = int((row[alias] if alias else 0) or 0)
+                            obj[col] = {"__pmw_blob_skipped__": True, "size": size}
+                        else:
+                            obj[col] = _backup_value(table, col, row[col], include_binary=include_binary)
                     except Exception:
                         obj[col] = None
                 out_rows.append(obj)
             payload["tables"][table] = {"columns": cols, "rows": out_rows, "missing": False}
+            print(f"Backup loaded {len(out_rows)} row(s) from {table}", flush=True)
     finally:
         con.close()
     return payload
@@ -4624,10 +4669,8 @@ def write_server_backup_copy():
     """Writes a server-side backup file. On Render Free, filesystem may be temporary, so download backup is still the real safety copy."""
     try:
         os.makedirs(EXPORT_FOLDER, exist_ok=True)
-        # Server-side automatic backup skips huge file blobs so Render/Gunicorn does not time out.
-        # Use Admin > Backup > Download Full Backup when you need a complete file backup.
         payload = build_backup_payload(include_binary=False)
-        fn = "PMW_LIGHT_BACKUP_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".json"
+        fn = "PMW_BACKUP_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".json"
         path = os.path.join(EXPORT_FOLDER, fn)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(payload, f)
@@ -4820,7 +4863,7 @@ def admin_backup():
 @login_required
 @role_required('admin')
 def download_backup():
-    payload = build_backup_payload()
+    payload = build_backup_payload(include_binary=True)
     data = json.dumps(payload).encode("utf-8")
     fn = "PMW_FULL_BACKUP_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".json"
     try:
