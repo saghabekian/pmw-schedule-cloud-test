@@ -26,7 +26,7 @@ except Exception:
 
 
 APP_NAME = "PMW Ticket + Fabrication"
-APP_VERSION = "v51.1 Keyboard Nav Patch"
+APP_VERSION = "v51.2 Auto Backup Disabled Fix"
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(APP_DIR, "pmw_schedule.db")
 UPLOAD_FOLDER = os.path.join(APP_DIR, "uploads")
@@ -4625,29 +4625,19 @@ def write_server_backup_copy():
         return ""
 
 def maybe_daily_backup():
-    """Create one server-side backup per day when the app is used. Download backups remain recommended."""
-    try:
-        today = datetime.now().strftime("%Y-%m-%d")
-        marker = os.path.join(EXPORT_FOLDER, "last_auto_backup.txt")
-        last = ""
-        if os.path.exists(marker):
-            try:
-                last = open(marker, "r", encoding="utf-8").read().strip()
-            except Exception:
-                last = ""
-        if last != today:
-            path = write_server_backup_copy()
-            if path:
-                with open(marker, "w", encoding="utf-8") as f:
-                    f.write(today)
-    except Exception as e:
-        print("maybe_daily_backup failed:", repr(e))
+    """Disabled automatic server-side backup.
+
+    The previous automatic backup ran before normal page requests and could timeout
+    on Render when the database contained large ticket email/attachment blobs.
+    Manual Admin > Backup > Download Full Backup remains available.
+    """
+    return ""
 
 @app.before_request
 def pmw_auto_daily_backup_hook():
-    # Lightweight daily backup trigger. Only runs once per day per server filesystem.
-    if request.endpoint and not request.endpoint.startswith('static'):
-        maybe_daily_backup()
+    # Disabled to prevent Gunicorn worker timeouts during normal app use.
+    # Manual full backups are still handled by /admin/download_backup.
+    return None
 
 
 # ===== EXCEL SCHEDULE EXPORT v50.4 =====
